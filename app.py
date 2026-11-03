@@ -38,11 +38,33 @@ def require_app_login() -> None:
 
 st.set_page_config(page_title="AlphaFund AI V1", page_icon="📈", layout="wide")
 require_app_login()
+st.markdown("""
+<style>
+[data-testid="stAppViewContainer"] { background:#f6f8f7; }
+[data-testid="stHeader"] { background:rgba(246,248,247,.92); }
+.block-container { max-width:1440px; padding-top:1.35rem; padding-bottom:3rem; }
+h1,h2,h3 { letter-spacing:-.035em; color:#14251f; }
+[data-testid="stMetric"] { background:#fff; border:1px solid #e5ece8; border-radius:16px; padding:16px 18px; box-shadow:0 2px 10px rgba(20,50,38,.035); }
+[data-testid="stMetricLabel"] p { color:#63756d; font-size:.82rem; }
+[data-testid="stMetricValue"] { color:#14251f; font-weight:700; }
+.stButton > button[kind="primary"], .stFormSubmitButton > button { background:#00a878; border-color:#00a878; border-radius:10px; font-weight:650; }
+.stButton > button { border-radius:10px; }
+[data-testid="stTabs"] button { font-weight:650; }
+[data-testid="stDataFrame"] { border:1px solid #e5ece8; border-radius:12px; overflow:hidden; }
+[data-testid="stChatMessage"] { background:#fff; border:1px solid #e8efeb; border-radius:14px; }
+[data-testid="stSidebar"] { background:#fff; border-right:1px solid #e8efeb; }
+[data-testid="stAlert"] { border-radius:12px; }
+.af-eyebrow { color:#00a878; font-size:.78rem; font-weight:750; letter-spacing:.1em; text-transform:uppercase; }
+.af-subtitle { color:#687970; font-size:.95rem; margin-top:-.5rem; }
+</style>
+""", unsafe_allow_html=True)
 settings.validate()
 initialize_ledger()
 
-st.title("AlphaFund AI V1")
-st.caption("Indian equities research • Paper trading only • Live orders disabled")
+st.markdown('<div class="af-eyebrow">Your wealth, in one place</div>', unsafe_allow_html=True)
+st.title("AlphaFund")
+st.markdown('<div class="af-subtitle">Portfolio • Markets • Insights • AI assistant</div>', unsafe_allow_html=True)
+st.caption("Groww-inspired portfolio experience · Groww connection is read-only · Live orders are disabled")
 st.warning("Research software only. Signals are not investment advice. Market data can be delayed.")
 
 with st.sidebar:
@@ -400,3 +422,43 @@ with performance_tab:
             st.caption("XIRR uses imported dated transaction amounts plus the latest complete portfolio value as terminal value. Review transaction signs/types and ensure transaction history is complete before relying on this metric.")
         else:
             st.info("Import transaction history to calculate investor-level XIRR.")
+
+
+# Portfolio-aware AI assistant
+st.divider()
+st.markdown('<div class="af-eyebrow">AlphaFund intelligence</div>', unsafe_allow_html=True)
+st.header("Ask AlphaFund")
+st.caption("Ask questions about your holdings, allocation, transactions, NAVs, valuations and investment research. Answers use the data available in this app.")
+from alphafund.portfolio_chat import build_portfolio_context, answer_portfolio_question
+chat_holdings = portfolio.list_holdings()
+chat_valuations = portfolio.list_valuations()
+chat_transactions = portfolio.list_transactions()
+chat_context = build_portfolio_context(
+    holdings=chat_holdings,
+    valuations=chat_valuations,
+    transactions=chat_transactions,
+    groww_holdings=st.session_state.get("groww_holdings", []),
+)
+if "alphafund_chat" not in st.session_state:
+    st.session_state["alphafund_chat"] = [{
+        "role": "assistant",
+        "content": "Hello. I’m your AlphaFund portfolio assistant. I can help review your recorded investments, explain portfolio metrics and identify missing data. What would you like to understand?"
+    }]
+for chat_item in st.session_state["alphafund_chat"]:
+    with st.chat_message(chat_item["role"]):
+        st.markdown(chat_item["content"])
+chat_question = st.chat_input("Ask about your portfolio, returns, mutual funds or a stock…")
+if chat_question:
+    st.session_state["alphafund_chat"].append({"role": "user", "content": chat_question})
+    chat_reply = answer_portfolio_question(
+        chat_question, chat_context,
+        api_key=get_secret("OPENAI_API_KEY"),
+        model=get_secret("OPENAI_MODEL") or settings.openai_model,
+        history=st.session_state["alphafund_chat"][:-1],
+    )
+    st.session_state["alphafund_chat"].append({"role": "assistant", "content": chat_reply})
+    st.rerun()
+if st.button("Clear chat history", key="clear_alphafund_chat"):
+    st.session_state["alphafund_chat"] = []
+    st.rerun()
+st.caption(f"Context currently loaded: {len(chat_holdings)} saved holdings · {len(st.session_state.get('groww_holdings', []))} Groww holdings · {len(chat_transactions)} transactions · {len(chat_valuations)} valuations. Chat history is held in this Streamlit session.")
