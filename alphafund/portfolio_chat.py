@@ -10,9 +10,11 @@ def build_portfolio_context(holdings=None, valuations=None, transactions=None, g
         "valuation_observations": (valuations or [])[-300:],
         "transactions": (transactions or [])[-300:],
         "groww_live_holdings": (groww_holdings or [])[:300],
+        "groww_imported_holdings": [row for row in (holdings or []) if str(row.get("provider", "")).strip().lower() == "groww"][:300],
         "data_notes": [
             "Only supplied records are available; do not assume missing assets or transactions.",
-            "Distinguish saved records from live Groww holdings.",
+            "Include imported Groww mutual-fund holdings from saved_holdings and groww_imported_holdings in portfolio analysis.",
+            "Distinguish live Groww Demat stock holdings from imported Groww mutual-fund statement records.",
             "Do not calculate market value without a matching valuation or quote.",
             "Do not describe cost basis as current value.",
             "Flag mixed currencies, stale dates and incomplete coverage.",
@@ -49,14 +51,46 @@ def answer_portfolio_question(question: str, context: dict, api_key: str = "",
             return result
 
         live_rows = groww_cost_rows(groww)
-        if any(k in q for k in ("analyse", "analyze", "summary", "allocation", "concentration", "portfolio", "holding", "position", "own")):
+        if any(k in q for k in ("analyse", "analyze", "summary", "allocation", "concentration", "portfolio", "holding", "position", "own", "fund")):
+            saved_cost_rows = []
+            for row in holdings:
+                try:
+                    quantity = float(row.get("quantity") or 0)
+                    average = float(row.get("average_cost") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if quantity <= 0:
+                    continue
+                saved_cost_rows.append({
+                    "name": str(row.get("instrument") or row.get("identifier") or "Unknown"),
+                    "asset_type": str(row.get("asset_type") or "unclassified"),
+                    "channel": str(row.get("channel") or row.get("provider") or "AlphaFund"),
+                    "cost_basis": quantity * average,
+                })
+            groww_mf_rows = [row for row in saved_cost_rows
+                             if row["asset_type"].lower() == "mutual_fund"
+                             and row["channel"].lower() == "groww"]
             lines = [
-                f"**Portfolio data loaded**",
-                f"- Groww Demat stock holdings: {len(live_rows)}",
-                f"- AlphaFund saved holding records: {len(holdings)}",
+                "**Portfolio data loaded**",
+                f"- Live Groww Demat stock holdings: {len(live_rows)}",
+                f"- Saved AlphaFund holding records: {len(holdings)}",
+                f"- Imported Groww mutual-fund records: {len(groww_mf_rows)}",
                 f"- Saved transactions: {len(tx)}",
                 f"- Saved valuation observations: {len(vals)}",
             ]
+            if groww_mf_rows:
+                mf_cost = sum(row["cost_basis"] for row in groww_mf_rows)
+                lines.append(f"- Groww mutual-fund recorded cost basis: ₹{mf_cost:,.2f} (only rows with average cost; not current NAV value)")
+                lines.append("**Imported Groww mutual funds**")
+                for row in sorted(groww_mf_rows, key=lambda item: item["cost_basis"], reverse=True)[:10]:
+                    lines.append(f"- {row['name']}: ₹{row['cost_basis']:,.2f} recorded cost basis")
+            if saved_cost_rows:
+                by_asset = {}
+                for row in saved_cost_rows:
+                    by_asset[row["asset_type"]] = by_asset.get(row["asset_type"], 0.0) + row["cost_basis"]
+                lines.append("**Saved portfolio cost basis by asset type**")
+                for asset, value in sorted(by_asset.items(), key=lambda item: item[1], reverse=True):
+                    lines.append(f"- {asset}: ₹{value:,.2f}")
             if live_rows:
                 invested = sum(row["cost_basis"] for row in live_rows)
                 lines.append(f"- Groww recorded cost basis: ₹{invested:,.2f} (quantity × average purchase price; not current market value)")
@@ -70,7 +104,7 @@ def answer_portfolio_question(question: str, context: dict, api_key: str = "",
             else:
                 lines.append("No Groww holdings are loaded. Connect Groww credentials and refresh the read-only portfolio.")
             if holdings:
-                lines.append("Saved AlphaFund holdings are included separately; they are not automatically merged with Groww records to avoid double-counting.")
+                lines.append("Imported Groww mutual funds are included from saved holdings. Live Groww Demat stocks are shown separately; check for duplicates before combining totals.")
             lines.append("**Limitations:** This local analysis uses recorded purchase cost only. It cannot calculate current market value, unrealised return, sector exposure or risk without current prices, instrument classifications and complete position coverage. Configure OPENAI_API_KEY for deeper natural-language analysis.")
             return "\n".join(lines)
         if any(k in q for k in ("transaction", "sip", "buy", "sell")):
