@@ -184,3 +184,19 @@ The importer currently supports the holdings template only. Transaction history,
 - Discover now downloads the latest public AMFI NAV feed and supports scheme-name search. NAV is a per-unit scheme value; it does not establish the user's units, cost basis or portfolio market value.
 - Mutual-fund units should be imported from a CAS statement or entered manually using the holdings CSV template with `asset_type=mutual_fund`. Add matching per-unit NAV observations using the valuations CSV template with `observation_type=nav`.
 - Mobile typography uses larger body, input and navigation text with stronger contrast. Chat input remains usable on narrow screens.
+
+
+## Local AI model (Ollama)
+
+AlphaFund portfolio analysis defaults to local Ollama (qwen2.5:7b) and uses Ollama /api/chat. Portfolio prompts are sent to the configured Ollama host; OpenAI fallback is disabled by default.
+
+### Install and run locally
+
+1. Install Ollama from https://ollama.com/.
+2. Start Ollama and download the model: ollama pull qwen2.5:7b
+3. Install requirements and run streamlit run app.py.
+4. Configure .env or Streamlit Secrets with ALPHAFUND_AI_PROVIDER=ollama, OLLAMA_BASE_URL=http://localhost:11434, OLLAMA_MODEL=qwen2.5:7b and OPENAI_FALLBACK_ENABLED=false.
+
+For cloud-only mode set ALPHAFUND_AI_PROVIDER=openai and configure OPENAI_API_KEY. To permit local-first fallback to OpenAI, set OPENAI_FALLBACK_ENABLED=true; portfolio metrics are then sent to OpenAI if Ollama is unavailable.
+
+Hosting note: Streamlit Community Cloud cannot reach Ollama on your laptop through localhost. Local inference works when AlphaFund runs on the same laptop as Ollama. A remote Streamlit app needs a secured, authenticated, network-reachable Ollama host or OpenAI cloud mode. Do not expose Ollama directly to the public internet. Install models explicitly with ollama pull; the app does not download them automatically.
