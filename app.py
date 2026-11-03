@@ -50,6 +50,11 @@ h1,h2,h3 { letter-spacing:-.035em; color:#14251f; }
 .stButton > button[kind="primary"], .stFormSubmitButton > button { background:#00a878; border-color:#00a878; border-radius:10px; font-weight:650; }
 .stButton > button { border-radius:10px; }
 [data-testid="stTabs"] button { font-weight:650; }
+div[data-testid="stRadio"] { position:fixed; left:0; right:0; bottom:0; z-index:999; background:#fff; border-top:1px solid #e4ece7; padding:10px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); box-shadow:0 -5px 20px rgba(20,50,38,.08); }
+div[data-testid="stRadio"] > label { display:none; }
+div[data-testid="stRadio"] > div { justify-content:space-around; gap:4px; }
+div[data-testid="stRadio"] label { font-size:.82rem; font-weight:650; }
+.block-container { padding-bottom:6.5rem; }
 [data-testid="stDataFrame"] { border:1px solid #e5ece8; border-radius:12px; overflow:hidden; }
 [data-testid="stChatMessage"] { background:#fff; border:1px solid #e8efeb; border-radius:14px; }
 [data-testid="stSidebar"] { background:#fff; border-right:1px solid #e8efeb; }
