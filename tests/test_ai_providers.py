@@ -1,4 +1,7 @@
-from alphafund.ai_providers import ollama_chat, AIProviderError
+import requests
+import pytest
+
+from alphafund.ai_providers import AIProviderError, huggingface_chat, ollama_chat
 
 
 class FakeResponse:
@@ -6,39 +9,60 @@ class FakeResponse:
         return None
 
     def json(self):
-        return {"message": {"content": "Portfolio review complete"}}
+        return {"message": {"content": "local answer"}}
 
 
 def test_ollama_chat_posts_to_local_server(monkeypatch):
-    seen = {}
+    calls = {}
 
     def fake_post(url, json, timeout):
-        seen["url"] = url
-        seen["json"] = json
-        seen["timeout"] = timeout
+        calls.update(url=url, json=json, timeout=timeout)
         return FakeResponse()
 
     monkeypatch.setattr("alphafund.ai_providers.requests.post", fake_post)
-    answer = ollama_chat(
-        [{"role": "user", "content": "Review this portfolio"}],
-        model="qwen2.5:7b",
-        base_url="http://localhost:11434/",
-    )
-    assert answer == "Portfolio review complete"
-    assert seen["url"] == "http://localhost:11434/api/chat"
-    assert seen["json"]["model"] == "qwen2.5:7b"
-    assert seen["json"]["stream"] is False
+    answer = ollama_chat([{"role": "user", "content": "test"}])
+    assert answer == "local answer"
+    assert calls["url"] == "http://localhost:11434/api/chat"
+    assert calls["json"]["model"] == "qwen2.5:7b"
 
 
 def test_ollama_chat_reports_unreachable_server(monkeypatch):
-    import requests
-
     def fail_post(*args, **kwargs):
         raise requests.ConnectionError("offline")
 
     monkeypatch.setattr("alphafund.ai_providers.requests.post", fail_post)
-    try:
+    with pytest.raises(AIProviderError, match="Cannot reach Ollama"):
         ollama_chat([{"role": "user", "content": "test"}])
-        assert False, "Expected AIProviderError"
-    except AIProviderError as exc:
-        assert "Cannot reach Ollama" in str(exc)
+
+
+def test_huggingface_chat_uses_router_and_open_weight_model(monkeypatch):
+    calls = {}
+
+    class Choice:
+        class Message:
+            content = "managed answer"
+        message = Message()
+
+    class Completion:
+        choices = [Choice()]
+
+    class Chat:
+        class Completions:
+            def create(self, **kwargs):
+                calls.update(kwargs)
+                return Completion()
+        completions = Completions()
+
+    class Client:
+        def __init__(self, **kwargs):
+            calls["client"] = kwargs
+            self.chat = Chat()
+
+    monkeypatch.setattr("openai.OpenAI", Client)
+    answer = huggingface_chat(
+        [{"role": "user", "content": "test"}], api_token="test-token"
+    )
+    assert answer == "managed answer"
+    assert calls["client"]["base_url"] == "https://router.huggingface.co/v1"
+    assert calls["client"]["api_key"] == "test-token"
+    assert calls["model"] == "openai/gpt-oss-120b:cheapest"
