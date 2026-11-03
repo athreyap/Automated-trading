@@ -332,7 +332,7 @@ class PortfolioStore:
                 account = session.scalar(select(Account).where(and_(
                     Account.name == row["account_name"], Account.provider == row["provider"])))
                 if account is None:
-                    account = Account(name=row["account_name"], account_type="broker",
+                    account = Account(name=row["account_name"], account_type=row.get("account_type", "broker"),
                                       provider=row["provider"], currency=row["currency"])
                     session.add(account)
                     session.flush()
