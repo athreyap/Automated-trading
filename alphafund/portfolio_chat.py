@@ -8,7 +8,10 @@ def build_portfolio_context(holdings=None, valuations=None, transactions=None, g
     # Storage returns dated snapshots newest-first. Keep only the latest row for
     # each account/security so a sync history is never summed as multiple assets.
     latest = {}
-    for row in (holdings or []):
+    ordered_holdings = sorted(
+        holdings or [], key=lambda row: str(row.get("as_of_date") or ""), reverse=True
+    )
+    for row in ordered_holdings:
         key = (str(row.get("account") or ""), str(row.get("identifier") or ""))
         if key not in latest:
             latest[key] = row
