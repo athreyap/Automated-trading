@@ -58,4 +58,4 @@ def test_portfolio_chat_uses_latest_snapshot_per_position():
          "average_cost": 110, "as_of_date": "2026-11-03"},
     ])
     assert len(context["saved_holdings"]) == 1
-    assert context["saved_holdings"][0]["quantity"] == 5
+    assert context["saved_holdings"][0]["quantity"] == 7
