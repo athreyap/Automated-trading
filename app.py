@@ -166,6 +166,11 @@ from datetime import date
 from alphafund.storage import PortfolioStore
 from alphafund.imports import validate_holdings_csv
 
+# Streamlit Cloud secrets are not guaranteed to be exported as environment variables.
+configured_database_url = get_secret("DATABASE_URL")
+if configured_database_url:
+    os.environ["DATABASE_URL"] = configured_database_url
+
 @st.cache_resource
 def portfolio_store():
     store = PortfolioStore()
