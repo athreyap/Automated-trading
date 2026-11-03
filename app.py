@@ -678,6 +678,8 @@ elif page == "AI Chat":
             model=(get_secret("HUGGINGFACE_MODEL") or "openai/gpt-oss-120b:cheapest") if (get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").lower() == "huggingface" else (get_secret("OPENAI_MODEL") or settings.openai_model),
             provider=(get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").lower(),
             cloud_data_sharing=get_secret("ALPHAFUND_CLOUD_DATA_SHARING").lower() == "true",
+            ollama_model=get_secret("OLLAMA_MODEL") or "qwen2.5:7b",
+            ollama_base_url=get_secret("OLLAMA_BASE_URL") or "http://localhost:11434",
             history=st.session_state["alphafund_chat"][:-1],
         )
         st.session_state["alphafund_chat"].append({"role": "assistant", "content": chat_reply})
