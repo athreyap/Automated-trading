@@ -1,0 +1,2 @@
+account_name,provider,fund_or_strategy,identifier,flow_type,flow_date,amount,currency,reported_nav,nav_as_of_date,notes
+My PMS Account,Example Manager,Example Strategy,STRATEGY-001,contribution,2026-10-01,100000,INR,102500,2026-10-31,Example row - replace before import
