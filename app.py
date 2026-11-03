@@ -7,7 +7,7 @@ from alphafund.market_data import fetch_history, normalize_symbol
 from alphafund.strategy import add_indicators, latest_signal, backtest
 from alphafund.paper_broker import initialize_ledger, list_trades, record_paper_trade, paper_cash
 from alphafund.ai_explainer import explain_signal
-from alphafund.groww_client import GrowwReadOnlyClient, GrowwAPIError
+from alphafund.groww_client import GrowwReadOnlyClient, GrowwAPIError, generate_access_token
 
 
 def get_secret(name: str) -> str:
@@ -57,16 +57,21 @@ with st.sidebar:
         st.rerun()
 
 st.subheader("Groww portfolio — read only")
-groww_token = get_secret("GROWW_ACCESS_TOKEN")
-if not groww_token:
-    st.info("Add GROWW_ACCESS_TOKEN to Streamlit app secrets. Groww access tokens expire daily at 6:00 AM IST.")
+groww_access_token = get_secret("GROWW_ACCESS_TOKEN")
+groww_api_key = get_secret("GROWW_API_KEY")
+groww_api_secret = get_secret("GROWW_API_SECRET")
+if not groww_access_token and not (groww_api_key and groww_api_secret):
+    st.info("Configure either GROWW_ACCESS_TOKEN, or both GROWW_API_KEY and GROWW_API_SECRET in Streamlit Secrets.")
 else:
+    st.caption("Authentication: " + ("direct access token" if groww_access_token else "API key + secret (daily approval required in Groww Cloud)"))
     if st.button("Refresh Groww portfolio"):
         try:
-            holdings, positions = GrowwReadOnlyClient(groww_token).get_portfolio()
+            token = groww_access_token or generate_access_token(groww_api_key, groww_api_secret)
+            holdings, positions = GrowwReadOnlyClient(token).get_portfolio()
             st.session_state["groww_holdings"] = holdings
             st.session_state["groww_positions"] = positions
             st.session_state["groww_refreshed"] = pd.Timestamp.now(tz="Asia/Kolkata").strftime("%d %b %Y, %I:%M:%S %p IST")
+            st.success("Groww portfolio refreshed successfully.")
         except GrowwAPIError as exc:
             st.error(str(exc))
     if "groww_holdings" in st.session_state:
@@ -75,18 +80,24 @@ else:
         positions = st.session_state["groww_positions"]
         if holdings:
             hdf = pd.DataFrame(holdings)
-            hdf["invested_value"] = pd.to_numeric(hdf["quantity"], errors="coerce").fillna(0) * pd.to_numeric(hdf["average_price"], errors="coerce").fillna(0)
+            quantity = pd.to_numeric(hdf.get("quantity", pd.Series(0, index=hdf.index)), errors="coerce").fillna(0)
+            average_price = pd.to_numeric(hdf.get("average_price", pd.Series(0, index=hdf.index)), errors="coerce").fillna(0)
+            hdf["invested_value"] = quantity * average_price
             st.metric("Holdings cost value", f"₹{hdf['invested_value'].sum():,.2f}")
-            st.dataframe(hdf[[c for c in ["trading_symbol", "quantity", "average_price", "invested_value", "isin"] if c in hdf.columns]], use_container_width=True, hide_index=True)
+            columns = [col for col in ["trading_symbol", "quantity", "average_price", "invested_value", "isin"] if col in hdf.columns]
+            st.dataframe(hdf[columns], use_container_width=True, hide_index=True)
             st.caption("Cost value = quantity × average purchase price. This is not current market value or unrealised P&L.")
-        else: st.info("Groww returned no equity holdings.")
+        else:
+            st.info("Groww returned no equity holdings.")
         if positions:
             st.markdown("**Positions (CASH segment)**")
             pdf = pd.DataFrame(positions)
-            cols = [c for c in ["trading_symbol", "product", "quantity", "net_price", "realised_pnl", "exchange"] if c in pdf.columns]
+            cols = [col for col in ["trading_symbol", "product", "quantity", "net_price", "realised_pnl", "exchange"] if col in pdf.columns]
             st.dataframe(pdf[cols], use_container_width=True, hide_index=True)
-        else: st.info("Groww returned no CASH positions.")
-    else: st.caption("Select Refresh to retrieve your holdings and CASH positions.")
+        else:
+            st.info("Groww returned no CASH positions.")
+    else:
+        st.caption("Select Refresh to retrieve your holdings and CASH positions.")
 st.divider()
 
 symbol_input = st.text_input("NSE symbol", value="RELIANCE", help="Enter a ticker such as RELIANCE, TCS, INFY or SBIN.")
