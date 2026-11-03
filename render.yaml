@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: alphafund-ai-v1
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: TRADING_MODE
+        value: paper
+      - key: LIVE_TRADING_ENABLED
+        value: "false"
+      - key: GROWW_ENABLED
+        value: "false"
+      - key: INITIAL_CAPITAL
+        value: "1000"
+      - key: TRADING_ALLOCATION
+        value: "900"
+      - key: PROTECTED_RESERVE
+        value: "100"
