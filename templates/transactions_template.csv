@@ -1,0 +1,2 @@
+account_name,provider,asset_type,instrument_name,identifier,transaction_type,transaction_date,quantity,price,amount,currency,external_id,notes
+My Broker Account,manual,equity,Example Company,EXAMPLE,BUY,2026-10-01,10,125.50,1255.00,INR,TXN-0001,Example row - replace before import
