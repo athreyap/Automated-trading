@@ -123,3 +123,15 @@ pytest -q
 ```
 
 The schema is a foundation; CSV/CAS/PMS parsers, portfolio reconciliation, import preview/confirmation UI and the AI assistant are still future phases. Groww remains read-only.
+
+
+## Portfolio entry and CSV import (Phase 2)
+
+The dashboard now includes a consolidated portfolio section backed by the SQLAlchemy database:
+- Add individual holdings manually, including account, asset type, identifier, quantity, average cost and snapshot date.
+- Download the holdings CSV template, upload a populated file, validate it and review a preview before confirming import.
+- CSV validation checks required columns, blank identifiers, numeric quantities/costs, valid dates and duplicate rows within the file.
+- Exact-file re-imports are detected by SHA-256 checksum. Existing account/instrument/date snapshots are skipped rather than inserted twice.
+- The portfolio holdings tab displays saved snapshots from the database.
+
+The importer currently supports the holdings template only. Transaction history, CAS parsing, PMS/AIF cash-flow imports, reconciliation and Groww-to-database sync are not yet implemented. Configure a persistent PostgreSQL DATABASE_URL before relying on Streamlit Cloud for durable records; local SQLite and ephemeral cloud files are not a durable cloud database.
