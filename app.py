@@ -305,7 +305,7 @@ with holdings_tab:
 with transactions_tab:
     st.caption("Import broker transaction history. BUY/SIP/contribution amounts are treated as investor outflows; SELL/dividend/coupon/distribution amounts as inflows for XIRR.")
     st.download_button("Download transactions CSV template",
-        data="account_name,provider,asset_type,instrument_name,identifier,transaction_type,transaction_date,quantity,price,amount,currency,external_id,notes\nGroww Demat,groww,equity,Reliance,RELIANCE,BUY,2026-10-01,2,1200,2400,INR,TXN-001,Example only\n",
+        data="account_name,account_type,provider,asset_type,instrument_name,identifier,transaction_type,transaction_date,quantity,price,amount,currency,external_id,notes\nGroww Demat,broker,groww,equity,Reliance,RELIANCE,BUY,2026-10-01,2,1200,2400,INR,TXN-001,Example only\n",
         file_name="alphafund_transactions_template.csv", mime="text/csv")
     from alphafund.imports import validate_transactions_csv
     tx_upload = st.file_uploader("Upload transactions CSV", type=["csv"], key="transactions_csv_upload")
