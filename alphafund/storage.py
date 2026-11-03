@@ -153,6 +153,12 @@ class PortfolioStore:
             raise ValueError("Account name and type are required.")
         self.initialize()
         with self.Session.begin() as session:
+            existing = session.scalar(select(Account).where(
+                Account.name == name.strip(),
+                Account.account_type == account_type.strip().lower(),
+                Account.provider == provider.strip()))
+            if existing:
+                return existing.id
             item = Account(name=name.strip(), account_type=account_type.strip().lower(),
                            provider=provider.strip(), currency=currency.upper(),
                            masked_reference=masked_reference)
@@ -167,6 +173,11 @@ class PortfolioStore:
             raise ValueError("Instrument type, name and identifier are required.")
         self.initialize()
         with self.Session.begin() as session:
+            existing = session.scalar(select(Instrument).where(
+                Instrument.instrument_type == instrument_type.strip().lower(),
+                Instrument.identifier == identifier.strip().upper()))
+            if existing:
+                return existing.id
             item = Instrument(instrument_type=instrument_type.strip().lower(),
                               name=name.strip(), identifier=identifier.strip().upper(),
                               currency=currency.upper(), exchange=exchange,
