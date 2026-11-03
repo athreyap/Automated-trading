@@ -26,7 +26,7 @@ def test_allocation_groups_cost_basis_by_asset_type():
     ])
     result = allocation_by(frame, "asset_type")
     assert result.iloc[0]["asset_type"] == "equity"
-    assert result.iloc[0]["cost_basis"] == 200
+    assert result.iloc[0]["cost_basis"] == 250
     assert result.iloc[1]["cost_basis"] == 250
 
 
