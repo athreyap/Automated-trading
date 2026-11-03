@@ -7,7 +7,7 @@ import pandas as pd
 
 def holdings_frame(records: list[dict]) -> pd.DataFrame:
     columns = ["instrument", "identifier", "asset_type", "quantity", "average_cost",
-               "as_of_date", "source", "account"]
+               "as_of_date", "source", "account", "provider", "channel", "source_file"]
     frame = pd.DataFrame(records)
     if frame.empty:
         return pd.DataFrame(columns=columns + ["cost_basis"])
