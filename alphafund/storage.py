@@ -255,6 +255,139 @@ class PortfolioStore:
             return {"batch_id": batch.id, "inserted": inserted, "skipped": skipped,
                     "duplicate_file": False}
 
+
+    def import_transactions(self, records: list[dict], filename: str, checksum: str) -> dict:
+        """Import transaction ledger rows with checksum and external-ID deduplication."""
+        from sqlalchemy import and_
+        if not records:
+            raise ValueError("There are no transaction records to import.")
+        self.initialize()
+        with self.Session.begin() as session:
+            existing_batch = session.scalar(select(ImportBatch).where(ImportBatch.checksum == checksum))
+            if existing_batch:
+                return {"inserted": 0, "skipped": len(records), "duplicate_file": True}
+            batch = ImportBatch(source_type="csv", filename=filename, checksum=checksum,
+                                row_count=len(records), status="importing")
+            session.add(batch)
+            session.flush()
+            inserted = skipped = 0
+            for row in records:
+                account = session.scalar(select(Account).where(and_(
+                    Account.name == row["account_name"], Account.provider == row["provider"])))
+                if account is None:
+                    account = Account(name=row["account_name"], account_type="broker",
+                                      provider=row["provider"], currency=row["currency"])
+                    session.add(account)
+                    session.flush()
+                instrument = session.scalar(select(Instrument).where(and_(
+                    Instrument.instrument_type == row["asset_type"].lower(),
+                    Instrument.identifier == row["identifier"].upper())))
+                if instrument is None:
+                    instrument = Instrument(instrument_type=row["asset_type"].lower(),
+                                             name=row["instrument_name"], identifier=row["identifier"].upper(),
+                                             currency=row["currency"])
+                    session.add(instrument)
+                    session.flush()
+                external_id = row.get("external_id")
+                duplicate = None
+                if external_id:
+                    duplicate = session.scalar(select(Transaction.id).where(Transaction.external_id == external_id))
+                else:
+                    duplicate = session.scalar(select(Transaction.id).where(and_(
+                        Transaction.account_id == account.id, Transaction.instrument_id == instrument.id,
+                        Transaction.transaction_type == row["transaction_type"],
+                        Transaction.transaction_date == row["transaction_date"],
+                        Transaction.amount == float(row["amount"]),
+                        Transaction.quantity == (float(row["quantity"]) if row.get("quantity") is not None else None))))
+                if duplicate:
+                    skipped += 1
+                    continue
+                session.add(Transaction(account_id=account.id, instrument_id=instrument.id,
+                    transaction_type=row["transaction_type"], transaction_date=row["transaction_date"],
+                    quantity=float(row["quantity"]) if row.get("quantity") is not None else None,
+                    price=float(row["price"]) if row.get("price") is not None else None,
+                    amount=float(row["amount"]), currency=row["currency"], external_id=external_id,
+                    source_batch_id=batch.id, notes=row.get("notes")))
+                inserted += 1
+            batch.status = "completed"
+            batch.notes = f"Inserted {inserted}; skipped duplicates {skipped}."
+            return {"inserted": inserted, "skipped": skipped, "duplicate_file": False}
+
+    def import_valuations(self, records: list[dict], filename: str, checksum: str) -> dict:
+        """Append dated valuation observations; do not overwrite historical values."""
+        from sqlalchemy import and_
+        if not records:
+            raise ValueError("There are no valuation records to import.")
+        self.initialize()
+        with self.Session.begin() as session:
+            existing_batch = session.scalar(select(ImportBatch).where(ImportBatch.checksum == checksum))
+            if existing_batch:
+                return {"inserted": 0, "skipped": len(records), "duplicate_file": True}
+            batch = ImportBatch(source_type="csv", filename=filename, checksum=checksum,
+                                row_count=len(records), status="importing")
+            session.add(batch)
+            session.flush()
+            inserted = skipped = 0
+            for row in records:
+                account = session.scalar(select(Account).where(and_(
+                    Account.name == row["account_name"], Account.provider == row["provider"])))
+                if account is None:
+                    account = Account(name=row["account_name"], account_type="broker",
+                                      provider=row["provider"], currency=row["currency"])
+                    session.add(account)
+                    session.flush()
+                instrument = session.scalar(select(Instrument).where(and_(
+                    Instrument.instrument_type == row["asset_type"].lower(),
+                    Instrument.identifier == row["identifier"].upper())))
+                if instrument is None:
+                    instrument = Instrument(instrument_type=row["asset_type"].lower(),
+                        name=row["instrument_name"], identifier=row["identifier"].upper(),
+                        currency=row["currency"])
+                    session.add(instrument)
+                    session.flush()
+                duplicate = session.scalar(select(Valuation.id).where(and_(
+                    Valuation.instrument_id == instrument.id, Valuation.account_id == account.id,
+                    Valuation.valuation_date == row["valuation_date"],
+                    Valuation.observation_type == row["observation_type"],
+                    Valuation.source == row["source"], Valuation.value == float(row["value"]))))
+                if duplicate:
+                    skipped += 1
+                    continue
+                session.add(Valuation(instrument_id=instrument.id, account_id=account.id,
+                    valuation_date=row["valuation_date"], value=float(row["value"]),
+                    currency=row["currency"], observation_type=row["observation_type"],
+                    source=row["source"], quality=row["quality"]))
+                inserted += 1
+            batch.status = "completed"
+            batch.notes = f"Inserted {inserted}; skipped duplicates {skipped}."
+            return {"inserted": inserted, "skipped": skipped, "duplicate_file": False}
+
+    def list_valuations(self) -> list[dict]:
+        self.initialize()
+        with self.Session() as session:
+            rows = session.execute(select(Valuation, Instrument, Account)
+                .join(Instrument, Valuation.instrument_id == Instrument.id)
+                .outerjoin(Account, Valuation.account_id == Account.id)
+                .order_by(Valuation.valuation_date)).all()
+            return [{"account": a.name if a else "Unassigned", "instrument": i.name,
+                "identifier": i.identifier, "asset_type": i.instrument_type,
+                "valuation_date": v.valuation_date.isoformat(), "value": v.value,
+                "currency": v.currency, "observation_type": v.observation_type,
+                "source": v.source, "quality": v.quality} for v, i, a in rows]
+
+    def list_transactions(self) -> list[dict]:
+        self.initialize()
+        with self.Session() as session:
+            rows = session.execute(select(Transaction, Account, Instrument)
+                .join(Account, Transaction.account_id == Account.id)
+                .outerjoin(Instrument, Transaction.instrument_id == Instrument.id)
+                .order_by(Transaction.transaction_date)).all()
+            return [{"account": a.name, "instrument": i.name if i else "Cash",
+                "identifier": i.identifier if i else "", "transaction_type": t.transaction_type,
+                "transaction_date": t.transaction_date.isoformat(), "quantity": t.quantity,
+                "price": t.price, "amount": t.amount, "currency": t.currency,
+                "external_id": t.external_id} for t, a, i in rows]
+
     def list_accounts(self) -> list[dict]:
         self.initialize()
         with self.Session() as session:
