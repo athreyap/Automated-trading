@@ -10,7 +10,7 @@ A Streamlit-based Indian equities research dashboard with technical signals, a s
 - The dashboard requires APP_PASSWORD and keeps Groww credentials in server-side Streamlit secrets. Never commit or share secrets.
 - Groww supports a direct access token (expires daily at 6:00 AM IST) or API key + secret authentication. The app can generate an access token on portfolio refresh using the API key + secret; the API key must first be approved each day on Groww Cloud → API Keys.
 - Yahoo Finance is used for indicative historical market data. Availability, accuracy and delays are controlled by the data provider.
-- The paper ledger is local SQLite. On ephemeral cloud hosting, its contents may be lost on restart or redeploy.
+- The paper ledger remains local SQLite. The consolidated portfolio database supports managed PostgreSQL through `DATABASE_URL`; use a hosted database for durable cloud records.
 - This is educational software, not investment advice. Backtests do not predict future returns.
 
 ## Configuration
@@ -109,7 +109,7 @@ Important limitations:
 - XIRR is only meaningful when all relevant cash flows are present, amounts use one currency, and the terminal value covers the complete portfolio.
 - The current implementation does not convert currencies, model corporate actions, accrue bond coupons, calculate taxes/fees beyond imported entries, or reconcile statement balances.
 - For portfolio history, import a total `market_value` observation for each account/instrument/date. Unit price and NAV observations are not summed as portfolio values.
-- Groww holdings refresh is still read-only and is not automatically written into the historical database. Use the import paths to preserve dated history.
+- Groww holdings refresh is read-only and saved as dated snapshots in the configured portfolio database. CASH positions remain session-only.
 
 ## Portfolio analytics (Phase 3)
 
@@ -153,7 +153,7 @@ The repository now includes:
 
 ### Database setup
 
-Local development defaults to SQLite at `data/alphafund.db`. Set `DATABASE_URL` to a managed PostgreSQL connection string for persistent cloud deployment. The app's existing paper-trade ledger has not yet been migrated into this portfolio schema.
+Local development defaults to SQLite at `data/alphafund.db`. For cloud hosting, use a managed PostgreSQL database and set `DATABASE_URL` in Streamlit Cloud → App settings → Secrets. The recommended free starting option is Neon Postgres; Supabase Postgres is an alternative. See [Free cloud database setup](docs/free-database-setup.md) for the exact steps and limitations.
 
 Run migrations after installing requirements:
 
@@ -162,7 +162,7 @@ alembic upgrade head
 pytest -q
 ```
 
-The schema is a foundation; CSV/CAS/PMS parsers, portfolio reconciliation, import preview/confirmation UI and the AI assistant are still future phases. Groww remains read-only.
+The app also initializes missing tables at startup. The existing paper-trade ledger remains a separate local SQLite store; the consolidated portfolio records use `DATABASE_URL`.
 
 
 ## Portfolio entry and CSV import (Phase 2)
