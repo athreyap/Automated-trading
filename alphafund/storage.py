@@ -124,7 +124,14 @@ class PortfolioStore:
             if db_path and db_path != ":memory:":
                 Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         kwargs = {"check_same_thread": False} if self.url.startswith("sqlite") else {}
-        self.engine = create_engine(self.url, future=True, connect_args=kwargs)
+        # Cloud Postgres providers may suspend idle compute. Pre-ping validates
+        # pooled connections before reuse; recycle avoids stale long-lived sockets.
+        engine_options = {"pool_pre_ping": True, "pool_recycle": 300}
+        if self.url.startswith("sqlite"):
+            engine_options["connect_args"] = kwargs
+        else:
+            engine_options["connect_args"] = {"connect_timeout": 10}
+        self.engine = create_engine(self.url, future=True, **engine_options)
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
 
     def initialize(self) -> None:
