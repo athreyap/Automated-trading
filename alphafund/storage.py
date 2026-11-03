@@ -248,7 +248,8 @@ class PortfolioStore:
                 session.add(Holding(account_id=account.id, instrument_id=instrument.id,
                                     quantity=float(row["quantity"]),
                                     average_cost=float(cost) if cost is not None else None,
-                                    as_of_date=row["as_of_date"], source_batch_id=batch.id, source="csv"))
+                                    as_of_date=row["as_of_date"], source_batch_id=batch.id,
+                                    source=filename))
                 inserted += 1
             batch.status = "completed"
             batch.notes = f"Inserted {inserted}; skipped existing snapshots {skipped}."
@@ -399,12 +400,15 @@ class PortfolioStore:
         self.initialize()
         with self.Session() as session:
             rows = session.execute(
-                select(Holding, Account, Instrument)
+                select(Holding, Account, Instrument, ImportBatch)
                 .join(Account, Holding.account_id == Account.id)
                 .join(Instrument, Holding.instrument_id == Instrument.id)
+                .outerjoin(ImportBatch, Holding.source_batch_id == ImportBatch.id)
                 .order_by(Holding.as_of_date.desc(), Instrument.name)
             ).all()
             return [{"account": a.name, "instrument": i.name, "identifier": i.identifier,
                      "asset_type": i.instrument_type, "quantity": h.quantity,
                      "average_cost": h.average_cost, "as_of_date": h.as_of_date.isoformat(),
-                     "source": h.source} for h, a, i in rows]
+                     "source": h.source,
+                     "channel": batch.filename if batch and batch.filename else h.source}
+                    for h, a, i, batch in rows]
