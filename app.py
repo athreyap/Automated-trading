@@ -427,23 +427,19 @@ elif page == "Portfolio":
 
     with holdings_tab:
         current_holdings = portfolio.list_holdings()
-        live_groww = st.session_state.get("groww_holdings", [])
-        if live_groww:
-            st.markdown("#### Live Groww Demat holdings")
-            live_frame = pd.DataFrame(live_groww)
-            live_qty = pd.to_numeric(live_frame.get("quantity", pd.Series(0, index=live_frame.index)), errors="coerce").fillna(0)
-            live_avg = pd.to_numeric(live_frame.get("average_price", pd.Series(0, index=live_frame.index)), errors="coerce").fillna(0)
-            live_frame["Recorded cost basis (INR)"] = live_qty * live_avg
-            live_frame["Channel"] = "Groww - live API"
-            live_cols = [x for x in ["trading_symbol", "quantity", "average_price", "Recorded cost basis (INR)", "isin", "Channel"] if x in live_frame.columns]
-            st.dataframe(live_frame[live_cols], use_container_width=True, hide_index=True)
-            st.caption("Live broker data is displayed separately from saved snapshots to prevent double-counting. It is included in AI Chat. Sync time: " + st.session_state.get("groww_refreshed", "unknown"))
-        elif gw_connected:
-            st.info("Groww is connected. Select Sync Groww investments above to load live Demat holdings.")
+        if gw_connected and not portfolio.get_last_groww_sync():
+            st.info("Groww is connected. Select Sync Groww investments above to save your first Demat snapshot.")
         if current_holdings:
             from alphafund.analytics import holdings_frame, portfolio_summary, allocation_by
             saved_frame = holdings_frame(current_holdings)
-            summary = portfolio_summary(saved_frame)
+            # Historical snapshots remain in the register, but current metrics use
+            # only the latest row per account/instrument to prevent double-counting.
+            current_frame = saved_frame.copy()
+            current_frame["as_of_date"] = pd.to_datetime(current_frame["as_of_date"], errors="coerce")
+            current_frame = current_frame.sort_values("as_of_date").drop_duplicates(
+                ["account", "identifier"], keep="last")
+            current_frame = current_frame[current_frame["quantity"] > 0].copy()
+            summary = portfolio_summary(current_frame)
             st.markdown("#### Consolidated portfolio overview")
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Holding records", f"{summary['holding_count']:,}")
@@ -454,14 +450,14 @@ elif page == "Portfolio":
             left, right = st.columns(2)
             with left:
                 st.markdown("**Cost basis by asset class**")
-                asset_alloc = allocation_by(saved_frame, "asset_type")
+                asset_alloc = allocation_by(current_frame, "asset_type")
                 if not asset_alloc.empty:
                     st.bar_chart(asset_alloc.set_index("asset_type")["cost_basis"])
                 else:
                     st.info("No cost basis available for this chart.")
             with right:
                 st.markdown("**Cost basis by account**")
-                account_alloc = allocation_by(saved_frame, "account")
+                account_alloc = allocation_by(current_frame, "account")
                 if not account_alloc.empty:
                     st.bar_chart(account_alloc.set_index("account")["cost_basis"])
                 else:
@@ -470,7 +466,7 @@ elif page == "Portfolio":
             display_holdings = saved_frame.copy()
             display_holdings = display_holdings.rename(columns={"channel": "Channel", "source_file": "Source file"})
             st.dataframe(display_holdings, use_container_width=True, hide_index=True)
-            st.caption("Performance, unrealised P&L, sector exposure and risk metrics require dated market valuations and/or transaction history. They are not estimated from purchase cost.")
+            st.caption("This register retains dated snapshots, including closed positions. Current summary and allocation charts use only the latest snapshot per account/security. Performance, unrealised P&L, sector exposure and risk metrics require dated market valuations and/or transaction history.")
         else:
             st.info("No holdings saved yet. Start with Sync Groww investments, then add non-Groww assets manually or use the one-time CAS/file fallback.")
     
