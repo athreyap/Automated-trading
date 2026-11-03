@@ -28,3 +28,15 @@ def test_import_batch_rejects_unknown_source(tmp_path):
     store = PortfolioStore(f"sqlite:///{tmp_path / 'portfolio.db'}")
     with pytest.raises(ValueError, match="Unsupported import source"):
         store.create_import_batch("unknown")
+
+def test_csv_import_is_idempotent_and_skips_existing_snapshot(tmp_path):
+    store = PortfolioStore(f"sqlite:///{tmp_path / 'portfolio.db'}")
+    row = {"account_name": "Broker", "account_type": "broker", "provider": "groww",
+           "asset_type": "equity", "instrument_name": "Reliance", "identifier": "RELIANCE",
+           "quantity": 2, "average_cost": 1200.0, "as_of_date": date(2026, 11, 3),
+           "currency": "INR", "exchange": "NSE"}
+    first = store.import_holdings([row], "holdings.csv", "a" * 64)
+    second = store.import_holdings([row], "holdings.csv", "a" * 64)
+    assert first["inserted"] == 1
+    assert second["duplicate_file"] is True
+    assert len(store.list_holdings()) == 1
