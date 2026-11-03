@@ -86,7 +86,46 @@ else:
             st.metric("Holdings cost value", f"₹{hdf['invested_value'].sum():,.2f}")
             columns = [col for col in ["trading_symbol", "quantity", "average_price", "invested_value", "isin"] if col in hdf.columns]
             st.dataframe(hdf[columns], use_container_width=True, hide_index=True)
+
             st.caption("Cost value = quantity × average purchase price. This is not current market value or unrealised P&L.")
+            st.markdown("#### Groww analytics")
+            if "trading_symbol" in hdf:
+                by_symbol = hdf.assign(invested_value=hdf["invested_value"]).groupby("trading_symbol")["invested_value"].sum().sort_values(ascending=False).head(10)
+                st.markdown("**Largest positions by recorded cost basis**")
+                st.bar_chart(by_symbol)
+                st.caption("Ranked by quantity × average purchase price; this is not live market value.")
+            g1, g2, g3 = st.columns(3)
+            g1.metric("Equity holdings", f"{len(hdf):,}")
+            g2.metric("Recorded cost basis", f"₹{hdf['invested_value'].sum():,.2f}")
+            g3.metric("Unique securities", str(hdf["isin"].nunique()) if "isin" in hdf else "N/A")
+            with st.expander("Indicative market-price check"):
+                st.caption("Optional recent Yahoo Finance daily closes for recognizable NSE symbols. Quotes may be delayed and coverage may be partial.")
+                if st.button("Fetch indicative prices", key="groww_quote_refresh"):
+                    from alphafund.market_data import fetch_history
+                    quote_rows = []
+                    for _, holding in hdf.iterrows():
+                        symbol_value = str(holding.get("trading_symbol", "")).strip()
+                        if not symbol_value or symbol_value.lower() == "nan":
+                            continue
+                        try:
+                            history = fetch_history(symbol_value, period="5d")
+                            close = float(history["Close"].dropna().iloc[-1])
+                            qty = float(holding.get("quantity", 0))
+                            quote_rows.append({"Symbol": symbol_value, "Quantity": qty,
+                                "Last daily close (₹)": close, "Indicative value (₹)": qty * close,
+                                "Quote date": str(history.index[-1].date())})
+                        except Exception:
+                            quote_rows.append({"Symbol": symbol_value, "Quantity": holding.get("quantity"),
+                                "Last daily close (₹)": None, "Indicative value (₹)": None,
+                                "Quote date": "Unavailable"})
+                    st.session_state["groww_indicative_quotes"] = quote_rows
+                if st.session_state.get("groww_indicative_quotes"):
+                    quote_df = pd.DataFrame(st.session_state["groww_indicative_quotes"])
+                    st.dataframe(quote_df, use_container_width=True, hide_index=True)
+                    quoted = quote_df.dropna(subset=["Indicative value (₹)"])
+                    if not quoted.empty:
+                        st.metric("Indicative value of quoted positions", f"₹{quoted['Indicative value (₹)'].sum():,.2f}")
+                    st.caption("Partial quote coverage is possible. This is not a broker valuation or portfolio return.")
         else:
             st.info("Groww returned no equity holdings.")
         if positions:
@@ -231,6 +270,33 @@ with csv_tab:
 with holdings_tab:
     current_holdings = portfolio.list_holdings()
     if current_holdings:
-        st.dataframe(pd.DataFrame(current_holdings), use_container_width=True, hide_index=True)
+        from alphafund.analytics import holdings_frame, portfolio_summary, allocation_by
+        saved_frame = holdings_frame(current_holdings)
+        summary = portfolio_summary(saved_frame)
+        st.markdown("#### Consolidated portfolio overview")
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Holding records", f"{summary['holding_count']:,}")
+        k2.metric("Known recorded cost basis", f"₹{summary['cost_basis']:,.2f}")
+        k3.metric("Cost data coverage", f"{summary['cost_coverage_pct']:.1f}%")
+        k4.metric("Missing average cost", f"{summary['missing_cost_count']:,}")
+        st.caption("Cost basis includes only records with a recorded average cost. Multiple dated snapshots may exist; this register is not a deduplicated current-position valuation.")
+        left, right = st.columns(2)
+        with left:
+            st.markdown("**Cost basis by asset class**")
+            asset_alloc = allocation_by(saved_frame, "asset_type")
+            if not asset_alloc.empty:
+                st.bar_chart(asset_alloc.set_index("asset_type")["cost_basis"])
+            else:
+                st.info("No cost basis available for this chart.")
+        with right:
+            st.markdown("**Cost basis by account**")
+            account_alloc = allocation_by(saved_frame, "account")
+            if not account_alloc.empty:
+                st.bar_chart(account_alloc.set_index("account")["cost_basis"])
+            else:
+                st.info("No account-level cost basis available.")
+        st.markdown("**Saved holdings and data quality**")
+        st.dataframe(saved_frame, use_container_width=True, hide_index=True)
+        st.caption("Performance, unrealised P&L, sector exposure and risk metrics require dated market valuations and/or transaction history. They are not estimated from purchase cost.")
     else:
         st.info("No consolidated holdings yet. Add a holding manually or import the CSV template.")
