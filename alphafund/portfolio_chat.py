@@ -36,11 +36,13 @@ def build_portfolio_context(holdings=None, valuations=None, transactions=None, g
 
 def answer_portfolio_question(question: str, context: dict, api_key: str = "",
                               model: str = "openai/gpt-oss-120b:cheapest", history=None,
-                              provider: str = "huggingface", cloud_data_sharing: bool = False) -> str:
+                              provider: str = "huggingface", cloud_data_sharing: bool = False,
+                              ollama_model: str = "qwen2.5:7b",
+                              ollama_base_url: str = "http://localhost:11434") -> str:
     """Answer using only the supplied portfolio context; OpenAI is optional."""
     if not question.strip():
         return "Ask me about your holdings, allocation, returns, transactions or data quality."
-    if not api_key or not cloud_data_sharing:
+    if provider != "ollama" and (not api_key or not cloud_data_sharing):
         q = question.lower()
         holdings = context.get("saved_holdings", [])
         groww = context.get("groww_live_holdings", [])
@@ -127,7 +129,7 @@ def answer_portfolio_question(question: str, context: dict, api_key: str = "",
                     "Enable cloud data sharing and configure HF_TOKEN for portfolio-aware natural-language analysis.")
         return ("I can calculate basic Groww cost-basis summaries locally. For deeper portfolio reasoning across market data, documents and research, enable cloud data sharing and configure HF_TOKEN in Streamlit Secrets.")
     try:
-        from alphafund.ai_providers import huggingface_chat, openai_chat, AIProviderError
+        from alphafund.ai_providers import huggingface_chat, ollama_chat, openai_chat, AIProviderError
         messages = [
             {"role": "system", "content": (
                 "You are AlphaFund AI, a careful investment portfolio analyst. "
@@ -145,6 +147,8 @@ def answer_portfolio_question(question: str, context: dict, api_key: str = "",
         messages.append({"role": "user", "content": "PORTFOLIO DATA (JSON):\n" +
                          json.dumps(context, default=str, ensure_ascii=False) +
                          "\n\nQUESTION:\n" + question})
+        if provider == "ollama":
+            return ollama_chat(messages, model=ollama_model, base_url=ollama_base_url)
         if provider == "huggingface":
             return huggingface_chat(messages, api_token=api_key, model=model)
         if provider == "openai":
