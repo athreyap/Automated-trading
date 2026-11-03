@@ -40,27 +40,32 @@ st.set_page_config(page_title="AlphaFund AI V1", page_icon="📈", layout="wide"
 require_app_login()
 st.markdown("""
 <style>
-[data-testid="stAppViewContainer"] { background:#f6f8f7; }
-[data-testid="stHeader"] { background:rgba(246,248,247,.92); }
-.block-container { max-width:1440px; padding-top:1.35rem; padding-bottom:3rem; }
-h1,h2,h3 { letter-spacing:-.035em; color:#14251f; }
+:root { color-scheme: light; }
+html, body, [data-testid="stApp"], [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] { background:#f6f8f7 !important; color:#17251f !important; }
+[data-testid="stHeader"] { background:rgba(246,248,247,.96) !important; }
+.block-container { max-width:1440px; padding-top:1.35rem; padding-bottom:7rem; }
+h1,h2,h3,h4,h5,h6,[data-testid="stMarkdownContainer"] p,[data-testid="stMarkdownContainer"] li,[data-testid="stMarkdownContainer"] span,[data-testid="stText"],[data-testid="stCaption"],[data-testid="stWidgetLabel"],[data-testid="stMetricLabel"],[data-testid="stAlert"] p,label,.stMarkdown,.stText { color:#17251f !important; }
+h1,h2,h3 { letter-spacing:-.035em; font-weight:700 !important; }
+[data-testid="stCaption"] { color:#607269 !important; }
 [data-testid="stMetric"] { background:#fff; border:1px solid #e5ece8; border-radius:16px; padding:16px 18px; box-shadow:0 2px 10px rgba(20,50,38,.035); }
-[data-testid="stMetricLabel"] p { color:#63756d; font-size:.82rem; }
-[data-testid="stMetricValue"] { color:#14251f; font-weight:700; }
-.stButton > button[kind="primary"], .stFormSubmitButton > button { background:#00a878; border-color:#00a878; border-radius:10px; font-weight:650; }
+[data-testid="stMetricLabel"] p { color:#63756d !important; font-size:.82rem; }
+[data-testid="stMetricValue"] { color:#14251f !important; font-weight:700; }
+.stButton > button[kind="primary"], .stFormSubmitButton > button { background:#00a878; border-color:#00a878; color:#fff !important; border-radius:10px; font-weight:650; }
 .stButton > button { border-radius:10px; }
 [data-testid="stTabs"] button { font-weight:650; }
-div[data-testid="stRadio"] { position:fixed; left:0; right:0; bottom:0; z-index:999; background:#fff; border-top:1px solid #e4ece7; padding:10px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); box-shadow:0 -5px 20px rgba(20,50,38,.08); }
-div[data-testid="stRadio"] > label { display:none; }
-div[data-testid="stRadio"] > div { justify-content:space-around; gap:4px; }
-div[data-testid="stRadio"] label { font-size:.82rem; font-weight:650; }
-.block-container { padding-bottom:6.5rem; }
 [data-testid="stDataFrame"] { border:1px solid #e5ece8; border-radius:12px; overflow:hidden; }
 [data-testid="stChatMessage"] { background:#fff; border:1px solid #e8efeb; border-radius:14px; }
 [data-testid="stSidebar"] { background:#fff; border-right:1px solid #e8efeb; }
 [data-testid="stAlert"] { border-radius:12px; }
-.af-eyebrow { color:#00a878; font-size:.78rem; font-weight:750; letter-spacing:.1em; text-transform:uppercase; }
-.af-subtitle { color:#687970; font-size:.95rem; margin-top:-.5rem; }
+.af-eyebrow { color:#008b63 !important; font-size:.78rem; font-weight:750; letter-spacing:.1em; text-transform:uppercase; }
+.af-subtitle { color:#687970 !important; font-size:.95rem; margin-top:-.5rem; }
+/* Mobile navigation: left aligned with readable labels. */
+div[data-testid="stRadio"] { position:fixed; left:0; right:0; bottom:0; z-index:999; background:#fff; border-top:1px solid #e4ece7; padding:10px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); box-shadow:0 -5px 20px rgba(20,50,38,.08); }
+div[data-testid="stRadio"] > label { display:none !important; }
+div[data-testid="stRadio"] > div { display:flex !important; justify-content:flex-start !important; align-items:center !important; gap:clamp(16px, 5vw, 32px) !important; flex-wrap:nowrap !important; overflow-x:auto; }
+div[data-testid="stRadio"] label { color:#26372f !important; font-size:.82rem !important; font-weight:650 !important; white-space:nowrap !important; }
+div[data-testid="stRadio"] label p { color:#26372f !important; }
+div[data-testid="stRadio"] [role="radiogroup"] { justify-content:flex-start !important; }
 </style>
 """, unsafe_allow_html=True)
 settings.validate()
