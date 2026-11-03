@@ -444,17 +444,18 @@ elif page == "Portfolio":
             else:
                 st.info("No portfolio history chart yet. Import total market_value observations for each position and date.")
             if saved_transactions:
-
-
-elif page == "AI Chat":
+                xirr_value = investor_xirr(
+                    saved_transactions,
                     terminal_value=total_market_value if complete_value_coverage else None,
-                    terminal_date=pd.Timestamp.now().date() if complete_value_coverage else None)
+                    terminal_date=pd.Timestamp.now().date() if complete_value_coverage else None,
+                )
                 st.metric("Investor XIRR", f"{xirr_value * 100:.2f}%" if xirr_value is not None and complete_value_coverage else "Not enough complete cash-flow data")
                 st.caption("XIRR uses imported dated transaction amounts plus the latest complete portfolio value as terminal value. Review transaction signs/types and ensure transaction history is complete before relying on this metric.")
             else:
                 st.info("Import transaction history to calculate investor-level XIRR.")
-    
-    
+
+
+elif page == "AI Chat":
     # Portfolio-aware AI assistant
     st.divider()
     st.markdown('<div class="af-eyebrow">AlphaFund intelligence</div>', unsafe_allow_html=True)
