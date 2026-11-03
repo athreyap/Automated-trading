@@ -36,9 +36,8 @@ def require_app_login() -> None:
     st.stop()
 
 
-require_app_login()
-
 st.set_page_config(page_title="AlphaFund AI V1", page_icon="📈", layout="wide")
+require_app_login()
 settings.validate()
 initialize_ledger()
 
