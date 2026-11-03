@@ -47,3 +47,15 @@ def test_local_chat_includes_groww_mutual_fund_cost_basis():
     assert "Imported Groww mutual-fund records: 1" in answer
     assert "₹1,000.00" in answer
     assert "Index Fund" in answer
+
+def test_portfolio_chat_uses_latest_snapshot_per_position():
+    context = build_portfolio_context(holdings=[
+        {"account": "Groww Demat", "identifier": "INE002A01018", "provider": "groww",
+         "asset_type": "equity", "instrument": "Reliance", "quantity": 5,
+         "average_cost": 100, "as_of_date": "2026-11-02"},
+        {"account": "Groww Demat", "identifier": "INE002A01018", "provider": "groww",
+         "asset_type": "equity", "instrument": "Reliance", "quantity": 7,
+         "average_cost": 110, "as_of_date": "2026-11-03"},
+    ])
+    assert len(context["saved_holdings"]) == 1
+    assert context["saved_holdings"][0]["quantity"] == 5
