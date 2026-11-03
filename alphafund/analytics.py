@@ -81,9 +81,10 @@ def valuation_enriched_holdings(holdings: list[dict], valuations: list[dict]) ->
         if match.empty:
             rows.append((float("nan"), None, None))
             continue
-        # Prefer total market value; otherwise use the latest unit price/NAV.
-        total = match[match["observation_type"] == "market_value"]
-        selected = total.iloc[-1] if not total.empty else match.sort_values("valuation_date").iloc[-1]
+        # Use the newest observation; on the same date prefer a total market value.
+        match = match.copy()
+        match["_priority"] = match["observation_type"].map({"market_value": 2, "price": 1, "nav": 1}).fillna(0)
+        selected = match.sort_values(["valuation_date", "_priority"]).iloc[-1]
         market_value = float(selected["value"])
         if selected["observation_type"] in ("price", "nav"):
             market_value *= float(holding["quantity"])
