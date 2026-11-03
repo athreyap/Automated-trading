@@ -225,6 +225,13 @@ class PortfolioStore:
                                 status="syncing", notes="Read-only Groww Demat holdings snapshot.")
             session.add(batch)
             session.flush()
+            previous_rows = session.scalars(select(Holding).where(
+                Holding.account_id == account.id
+            ).order_by(Holding.as_of_date.desc(), Holding.id.desc())).all()
+            latest_by_instrument = {}
+            for previous in previous_rows:
+                latest_by_instrument.setdefault(previous.instrument_id, previous)
+            seen_instrument_ids = set()
 
             for row in records:
                 if not isinstance(row, dict):
@@ -264,6 +271,7 @@ class PortfolioStore:
                     instrument.name = name or instrument.name
                     instrument.exchange = exchange or instrument.exchange
 
+                seen_instrument_ids.add(instrument.id)
                 existing = session.scalar(select(Holding).where(and_(
                     Holding.account_id == account.id,
                     Holding.instrument_id == instrument.id,
@@ -277,6 +285,28 @@ class PortfolioStore:
                 else:
                     session.add(Holding(account_id=account.id, instrument_id=instrument.id,
                         quantity=quantity, average_cost=average_cost,
+                        as_of_date=snapshot_date, source_batch_id=batch.id, source="Groww API"))
+                    inserted += 1
+
+            # A missing symbol in a successful broker snapshot means it is no
+            # longer held. Write a zero-quantity dated row so stale positions do
+            # not remain in the current portfolio view.
+            for instrument_id, previous in latest_by_instrument.items():
+                if instrument_id in seen_instrument_ids:
+                    continue
+                same_day = session.scalar(select(Holding).where(and_(
+                    Holding.account_id == account.id,
+                    Holding.instrument_id == instrument_id,
+                    Holding.as_of_date == snapshot_date)))
+                if same_day:
+                    same_day.quantity = 0.0
+                    same_day.average_cost = previous.average_cost
+                    same_day.source = "Groww API"
+                    same_day.source_batch_id = batch.id
+                    updated += 1
+                else:
+                    session.add(Holding(account_id=account.id, instrument_id=instrument_id,
+                        quantity=0.0, average_cost=previous.average_cost,
                         as_of_date=snapshot_date, source_batch_id=batch.id, source="Groww API"))
                     inserted += 1
 
