@@ -81,6 +81,24 @@ Install dependencies, then run: pytest -q
 3. Add authenticated user access and persistent cloud database.
 4. Implement Groww only through its current official API after reviewing eligibility, fees, terms and scopes. Keep broker order placement disabled until explicitly tested and approved.
 
+## Transaction and valuation analytics (Phase 4)
+
+The dashboard now supports:
+- Validated transaction CSV import with transaction dates, type, units, price, amount, currency and optional external transaction ID.
+- Validated valuation CSV import with append-only dated observations and explicit observation semantics: `market_value` (total position value), `price` (per-unit price) or `nav` (per-unit NAV).
+- Duplicate-file checksums and conservative duplicate transaction/valuation checks.
+- Position valuation using the newest matching observation for the same account and instrument. Unit price/NAV is multiplied by the latest saved holding quantity; a `market_value` observation is treated as a total.
+- Unrealised P&L and return on recorded cost only when every current holding has a matching valuation and recorded cost.
+- Portfolio valuation history from explicit `market_value` observations only.
+- Investor XIRR from imported transaction cash flows and a complete terminal portfolio value.
+
+Important limitations:
+- Import the complete transaction history before using XIRR. Transaction type controls cash-flow direction; verify source statement signs and types.
+- XIRR is only meaningful when all relevant cash flows are present, amounts use one currency, and the terminal value covers the complete portfolio.
+- The current implementation does not convert currencies, model corporate actions, accrue bond coupons, calculate taxes/fees beyond imported entries, or reconcile statement balances.
+- For portfolio history, import a total `market_value` observation for each account/instrument/date. Unit price and NAV observations are not summed as portfolio values.
+- Groww holdings refresh is still read-only and is not automatically written into the historical database. Use the import paths to preserve dated history.
+
 ## Portfolio analytics (Phase 3)
 
 The dashboard now includes deterministic analytics for the connected Groww equity holdings and saved consolidated holdings:
