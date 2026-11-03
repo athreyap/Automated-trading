@@ -19,3 +19,13 @@ def test_local_chat_reports_transaction_count():
     context = build_portfolio_context(transactions=[{"amount": 100}, {"amount": 200}])
     answer = answer_portfolio_question("Show my transactions", context)
     assert "2 saved transactions" in answer
+
+def test_local_chat_analyses_groww_cost_basis():
+    context = build_portfolio_context(groww_holdings=[
+        {"trading_symbol": "ABC", "quantity": 10, "average_price": 100},
+        {"trading_symbol": "XYZ", "quantity": 5, "average_price": 200},
+    ])
+    answer = answer_portfolio_question("Analyse my portfolio", context)
+    assert "₹2,000.00" in answer
+    assert "ABC" in answer
+    assert "Top-three cost-basis concentration" in answer
