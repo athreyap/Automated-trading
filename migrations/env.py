@@ -2,19 +2,26 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from pathlib import Path
 
 from alphafund.storage import Base, _database_url
 import alphafund.storage
 
+url = _database_url()
+if url.startswith("sqlite:///"):
+    db_path = url.removeprefix("sqlite:///")
+    if db_path and db_path != ":memory:":
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", _database_url().replace("%", "%%"))
+config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
 target_metadata = Base.metadata
 
 
 def run_migrations_offline():
-    context.configure(url=_database_url(), target_metadata=target_metadata,
+    context.configure(url=url, target_metadata=target_metadata,
                       literal_binds=True, dialect_opts={"paramstyle": "named"})
     with context.begin_transaction():
         context.run_migrations()
@@ -22,7 +29,7 @@ def run_migrations_offline():
 
 def run_migrations_online():
     connectable = engine_from_config(
-        {"sqlalchemy.url": _database_url()}, prefix="sqlalchemy.",
+        {"sqlalchemy.url": url}, prefix="sqlalchemy.",
         poolclass=pool.NullPool
     )
     with connectable.connect() as connection:
