@@ -101,3 +101,25 @@ These are **planned capabilities, not currently implemented features**. See:
 - [Hosting and execution architecture](docs/architecture.md)
 
 Live Groww order placement remains disabled and out of scope.
+
+## Portfolio foundation (Phase 0–1 implementation)
+
+The repository now includes:
+- A SQLAlchemy portfolio schema for accounts, instruments, dated holdings, transactions, valuations, cash flows and import batches.
+- A repository facade in `alphafund/storage.py`.
+- Alembic baseline migration: `alembic upgrade head`.
+- Starter CSV templates in `templates/` for holdings, transactions and PMS/AIF cash flows.
+- Mocked Groww checksum/authentication and read-only client tests, plus module import smoke tests.
+
+### Database setup
+
+Local development defaults to SQLite at `data/alphafund.db`. Set `DATABASE_URL` to a managed PostgreSQL connection string for persistent cloud deployment. The app's existing paper-trade ledger has not yet been migrated into this portfolio schema.
+
+Run migrations after installing requirements:
+
+```bash
+alembic upgrade head
+pytest -q
+```
+
+The schema is a foundation; CSV/CAS/PMS parsers, portfolio reconciliation, import preview/confirmation UI and the AI assistant are still future phases. Groww remains read-only.
