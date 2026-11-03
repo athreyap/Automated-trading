@@ -175,3 +175,12 @@ The dashboard now includes a consolidated portfolio section backed by the SQLAlc
 - The portfolio holdings tab displays saved snapshots from the database.
 
 The importer currently supports the holdings template only. Transaction history, CAS parsing, PMS/AIF cash-flow imports, reconciliation and Groww-to-database sync are not yet implemented. Configure a persistent PostgreSQL DATABASE_URL before relying on Streamlit Cloud for durable records; local SQLite and ephemeral cloud files are not a durable cloud database.
+
+
+## Groww holdings, mutual funds and AI data flow
+
+- The Groww Trading API portfolio endpoint documents Demat stock holdings and CASH/FNO positions. It does not currently document mutual-fund folio holdings. AlphaFund loads Groww holdings automatically when opening AI Chat if Groww credentials are configured; it also remains manually refreshable from Home. Groww records are passed separately into chat and are not silently merged with manually imported records.
+- Without an OpenAI API key, local chat can still calculate Groww cost-basis totals, largest positions and top-three concentration. It does not claim these are live market values or returns. Configure `OPENAI_API_KEY` in Streamlit Secrets for broader natural-language analysis.
+- Discover now downloads the latest public AMFI NAV feed and supports scheme-name search. NAV is a per-unit scheme value; it does not establish the user's units, cost basis or portfolio market value.
+- Mutual-fund units should be imported from a CAS statement or entered manually using the holdings CSV template with `asset_type=mutual_fund`. Add matching per-unit NAV observations using the valuations CSV template with `observation_type=nav`.
+- Mobile typography uses larger body, input and navigation text with stronger contrast. Chat input remains usable on narrow screens.
