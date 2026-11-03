@@ -6,6 +6,7 @@ A Streamlit-based Indian equities research dashboard with technical signals, a s
 
 - Paper trading only. Live trading is disabled and order placement is not implemented.
 - Groww integration calls only official read-only holdings and CASH positions GET endpoints. No order placement, modification or cancellation methods are present.
+- Hosting choice: Streamlit Community Cloud for the dashboard and read-only portfolio view. It does not provide stable outbound IP addresses, so it must not be used as the future Groww order-execution host.
 - The dashboard requires APP_PASSWORD and keeps GROWW_ACCESS_TOKEN in server-side Streamlit secrets. Never commit or share secrets.
 - Groww access tokens expire daily at 6:00 AM IST; update the Streamlit secret after generating a fresh token.
 - Yahoo Finance is used for indicative historical market data. Availability, accuracy and delays are controlled by the data provider.
@@ -46,6 +47,10 @@ The default example uses INR 1,000 capital: INR 900 strategy allocation and INR 
 6. Generate a Groww access token from Profile → Settings → Trading APIs. Tokens expire at 6:00 AM IST daily, so refresh the token and update the secret when it expires.
 
 The app fails closed if APP_PASSWORD is missing. This is a basic single-user password gate, not full identity management. Keep the URL private and use a unique password. Verify API access and subscription eligibility in your Groww account.
+
+## Future architecture: Streamlit dashboard + separate execution service
+
+The selected V1 hosting target is Streamlit Community Cloud. Keep it as the user interface and read-only portfolio dashboard. If automated Groww order execution is approved later, deploy a separate backend/execution service on a VPS or cloud VM with a reserved static public IP, whitelist that IP in Groww, and have the Streamlit UI communicate with that backend over authenticated HTTPS. Never send Groww order requests directly from Streamlit Community Cloud. See [docs/architecture.md](docs/architecture.md).
 
 ## Run with Docker
 
