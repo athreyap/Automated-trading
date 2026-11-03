@@ -79,6 +79,22 @@ with st.sidebar:
         st.rerun()
 
 
+from datetime import date
+from alphafund.storage import PortfolioStore
+from alphafund.imports import validate_holdings_csv
+
+configured_database_url = get_secret("DATABASE_URL")
+if configured_database_url:
+    os.environ["DATABASE_URL"] = configured_database_url
+
+@st.cache_resource
+def portfolio_store():
+    store = PortfolioStore()
+    store.initialize()
+    return store
+
+portfolio = portfolio_store()
+
 # App-wide navigation
 page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "AI Chat"], horizontal=True,
                 label_visibility="collapsed", key="main_navigation")
@@ -243,24 +259,9 @@ elif page == "Portfolio":
     if trades:
         st.dataframe(pd.DataFrame(trades, columns=["Timestamp (UTC)", "Symbol", "Side", "Quantity", "Price", "Notional"]), use_container_width=True)
     else:
-        st.info("No paper trades recorded yet.")    st.divider()
+        st.info("No paper trades recorded yet.")
+    st.divider()
     st.header("Consolidated portfolio")
-    from datetime import date
-    from alphafund.storage import PortfolioStore
-    from alphafund.imports import validate_holdings_csv
-    
-    # Streamlit Cloud secrets are not guaranteed to be exported as environment variables.
-    configured_database_url = get_secret("DATABASE_URL")
-    if configured_database_url:
-        os.environ["DATABASE_URL"] = configured_database_url
-    
-    @st.cache_resource
-    def portfolio_store():
-        store = PortfolioStore()
-        store.initialize()
-        return store
-    
-    portfolio = portfolio_store()
     manual_tab, csv_tab, holdings_tab, transactions_tab, valuations_tab, performance_tab = st.tabs(["Add holding", "Import holdings", "Holdings", "Import transactions", "Import valuations", "Performance & P&L"])
     
     with manual_tab:
