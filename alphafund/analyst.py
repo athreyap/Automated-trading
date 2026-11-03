@@ -7,7 +7,8 @@ from typing import Any
 
 import pandas as pd
 
-from alphafund.analytics import holdings_frame, valuation_enriched_holdings, investor_xirr
+from alphafund.analytics import holdings_frame, valuation_enriched_holdings
+from alphafund.ai_providers import AIProviderError, ollama_chat, openai_chat
 
 
 def current_positions(holdings: list[dict]) -> pd.DataFrame:
@@ -40,7 +41,7 @@ def portfolio_review(holdings: list[dict], valuations: list[dict],
              .sort_values(ascending=False))
     allocation = [{"asset_type": str(k or "Unclassified"), "cost_basis": float(v)}
                   for k, v in alloc.items()]
-    largest = (valued.loc[known_cost].sort_values("cost_basis", ascending=False).head(10))
+    largest = valued.loc[known_cost].sort_values("cost_basis", ascending=False).head(10)
     largest_rows = [{"instrument": str(r.instrument), "asset_type": str(r.asset_type or "Unclassified"),
                      "cost_basis": float(r.cost_basis)} for r in largest.itertuples()]
     total_known = sum(x["cost_basis"] for x in allocation)
@@ -77,32 +78,41 @@ def review_fingerprint(holdings: list[dict], valuations: list[dict],
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def ai_interpretation(review: dict, api_key: str = "", model: str = "gpt-4o-mini") -> str:
+def ai_interpretation(review: dict, api_key: str = "", model: str = "gpt-4o-mini",
+                      provider: str = "ollama", ollama_model: str = "qwen2.5:7b",
+                      ollama_base_url: str = "http://localhost:11434",
+                      allow_cloud_fallback: bool = False) -> str:
     if review.get("status") == "empty":
         return review["message"]
-    if not api_key:
-        return ("**AI provider not configured.** Showing deterministic portfolio diagnostics. "
-                "Add OPENAI_API_KEY to Streamlit Secrets to enable the full AI analyst.\n\n"
-                + "\n".join(f"- {item}" for item in review.get("findings", [])))
+    findings = "\n".join(f"- {item}" for item in review.get("findings", []))
+    if provider not in {"ollama", "openai"}:
+        return "Unsupported AI provider. Choose 'ollama' or 'openai'."
+    system = (
+        "You are AlphaFund's investment research analyst. Interpret only the supplied "
+        "verified portfolio metrics. Do not invent market data, benchmark returns, prices, "
+        "NAVs, sectors, risk statistics or missing values. Distinguish cost basis from market "
+        "value. If valuation coverage is incomplete, do not state a portfolio-wide return. "
+        "Identify concentration, diversification and data-quality issues; explain what "
+        "additional data is needed. Do not issue buy/sell orders or guarantee performance. "
+        "Use headings: Executive view, What stands out, Risks and data gaps, Next steps."
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(review, default=str, ensure_ascii=False)},
+    ]
+    if provider == "ollama":
+        try:
+            return ollama_chat(messages, model=ollama_model, base_url=ollama_base_url)
+        except AIProviderError as exc:
+            if not allow_cloud_fallback:
+                return (f"**Local AI unavailable.** {exc}\n\n"
+                        "Your portfolio data was not sent to a cloud AI provider. "
+                        "Start Ollama locally or explicitly enable cloud fallback.\n\n" + findings)
+            try:
+                return openai_chat(messages, api_key=api_key, model=model)
+            except AIProviderError as cloud_exc:
+                return f"**AI unavailable.** {cloud_exc}\n\nDeterministic findings:\n{findings}"
     try:
-        from openai import OpenAI
-        response = OpenAI(api_key=api_key).chat.completions.create(
-            model=model, temperature=0.2,
-            messages=[
-                {"role": "system", "content": (
-                    "You are AlphaFund's investment research analyst. Interpret only the supplied "
-                    "verified portfolio metrics. Do not invent market data, benchmark returns, "
-                    "prices, NAVs, sectors, risk statistics or missing values. Distinguish cost "
-                    "basis from market value. If valuation coverage is incomplete, say so and do "
-                    "not state a portfolio-wide return. Identify concentration, diversification "
-                    "and data-quality issues; explain what additional data is needed. Do not "
-                    "issue buy/sell orders or guarantee performance. Use headings: Executive view, "
-                    "What stands out, Risks and data gaps, Next steps."
-                )},
-                {"role": "user", "content": json.dumps(review, default=str, ensure_ascii=False)},
-            ])
-        return response.choices[0].message.content or "AI analysis returned no text."
-    except Exception as exc:
-        return ("AI analysis is temporarily unavailable (" + type(exc).__name__ +
-                "). Deterministic metrics remain available.\n\n" +
-                "\n".join(f"- {item}" for item in review.get("findings", [])))
+        return openai_chat(messages, api_key=api_key, model=model)
+    except AIProviderError as exc:
+        return f"**Cloud AI unavailable.** {exc}\n\nDeterministic findings:\n{findings}"
