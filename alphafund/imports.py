@@ -40,6 +40,7 @@ def validate_holdings_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]:
         frame["average_cost"] = pd.to_numeric(frame["average_cost"], errors="coerce")
         if (frame["average_cost"].dropna() < 0).any():
             raise ValueError("Average cost cannot be negative.")
+        frame["average_cost"] = frame["average_cost"].astype(object).where(frame["average_cost"].notna(), None)
 
     if "currency" not in frame:
         frame["currency"] = "INR"
