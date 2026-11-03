@@ -81,6 +81,16 @@ Install dependencies, then run: pytest -q
 3. Add authenticated user access and persistent cloud database.
 4. Implement Groww only through its current official API after reviewing eligibility, fees, terms and scopes. Keep broker order placement disabled until explicitly tested and approved.
 
+## Portfolio analytics (Phase 3)
+
+The dashboard now includes deterministic analytics for the connected Groww equity holdings and saved consolidated holdings:
+- Groww holding count, recorded cost basis, unique-security count and largest positions by cost basis.
+- An optional manual refresh of recent Yahoo Finance daily closes for recognizable NSE trading symbols, with quote date and partial-coverage disclosure.
+- Consolidated portfolio KPIs for saved holding records, known cost basis, cost-data coverage and missing average costs.
+- Cost-basis allocation charts by asset class and account for saved consolidated holdings.
+
+Market quotes are indicative third-party data and may be delayed or unavailable. A partial quote total must not be interpreted as the complete portfolio value. Historical performance, unrealised P&L, sector exposure and risk analytics are not yet enabled because the current records do not provide a complete dated valuation and transaction history. The dashboard deliberately does not manufacture those metrics.
+
 ## Approved multi-asset roadmap
 
 AlphaFund is planned as a **single-user, hybrid-AI investment workspace** for both existing holdings and new investment research. Planned coverage includes equities/ETFs, mutual funds, bonds, PMS and AIF investments.
