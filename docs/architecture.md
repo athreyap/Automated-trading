@@ -49,3 +49,22 @@ The current `alphafund/groww_client.py` is read-only and implements only GET req
 - Groww static IP setup: https://groww.in/blog/static-ip-api-trading-setup
 - Streamlit Community Cloud IP limitations: https://docs.streamlit.io/deploy/streamlit-community-cloud/status
 - Streamlit deployment and secrets: https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy
+
+## Multi-asset portfolio and AI architecture (approved plan)
+
+The product direction is a private **single-user** workspace with a Streamlit UI, a persistent portfolio database, private document storage, deterministic analytics services and a hybrid AI assistant.
+
+Planned ingestion sources are Groww read-only, Excel/CSV, CAS statements, manual entry and PMS/AIF statements. Groww endpoint coverage must not be assumed to include mutual funds, bonds, PMS or AIF; those asset classes require their own data/import paths.
+
+The assistant will use retrieval-augmented generation across:
+- Structured holdings, transactions, valuations and cash flows.
+- User-uploaded CAS/PMS/AIF documents, with page/source provenance.
+- Prior AlphaFund conversations and user-approved investment memory.
+
+Numerical metrics such as XIRR, allocation, bond cash flows and risk measures must be computed by deterministic Python services, not guessed by the language model. Cloud processing of private documents is opt-in; local model availability is hardware-dependent. Persistent PostgreSQL and private object storage are planned for production; local SQLite is for development/tests only.
+
+See [product scope](product-scope.md), [canonical data model](data-model.md) and [engineering implementation plan](implementation-plan.md).
+
+### Current implementation boundary
+
+The multi-asset modules, persistent portfolio ledger, document parsers, hybrid model router and portfolio-aware chatbot are **not yet implemented**. The current application remains the earlier equities research/paper-trading prototype with read-only Groww portfolio retrieval. Live order placement remains disabled.
