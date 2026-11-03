@@ -81,6 +81,10 @@ Install dependencies, then run: pytest -q
 3. Add authenticated user access and persistent cloud database.
 4. Implement Groww only through its current official API after reviewing eligibility, fees, terms and scopes. Keep broker order placement disabled until explicitly tested and approved.
 
+## Mobile navigation
+
+The main app is organized into four sections with a persistent mobile bottom navigation: Home (Groww read-only holdings and portfolio snapshot), Portfolio (manual/CSV holdings, transactions, valuations and performance), Discover (equity technical research plus mutual-fund NAV source guidance), and AI Chat (portfolio-aware assistant). The Discover page does not treat equity prices as mutual-fund NAVs; AMFI integration remains a separate data-source milestone.
+
 ## Groww-inspired UI and AlphaFund AI chat
 
 The app now uses a cleaner investment-dashboard visual system with a light background, green primary actions, compact metric cards, consistent tables and clearer section hierarchy.
