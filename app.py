@@ -430,7 +430,7 @@ elif page == "Portfolio":
         if gw_connected and not portfolio.get_last_groww_sync():
             st.info("Groww is connected. Select Sync Groww investments above to save your first Demat snapshot.")
         if current_holdings:
-            from alphafund.analytics import holdings_frame, portfolio_summary, allocation_by
+            from alphafund.analytics import holdings_frame, portfolio_summary, allocation_by, portfolio_valuation_history
             saved_frame = holdings_frame(current_holdings)
             # Historical snapshots remain in the register, but current metrics use
             # only the latest row per account/instrument to prevent double-counting.
