@@ -420,6 +420,19 @@ elif page == "Portfolio":
 
     with holdings_tab:
         current_holdings = portfolio.list_holdings()
+        live_groww = st.session_state.get("groww_holdings", [])
+        if live_groww:
+            st.markdown("#### Live Groww Demat holdings")
+            live_frame = pd.DataFrame(live_groww)
+            live_qty = pd.to_numeric(live_frame.get("quantity", pd.Series(0, index=live_frame.index)), errors="coerce").fillna(0)
+            live_avg = pd.to_numeric(live_frame.get("average_price", pd.Series(0, index=live_frame.index)), errors="coerce").fillna(0)
+            live_frame["Recorded cost basis (INR)"] = live_qty * live_avg
+            live_frame["Channel"] = "Groww - live API"
+            live_cols = [x for x in ["trading_symbol", "quantity", "average_price", "Recorded cost basis (INR)", "isin", "Channel"] if x in live_frame.columns]
+            st.dataframe(live_frame[live_cols], use_container_width=True, hide_index=True)
+            st.caption("Live broker data is displayed separately from saved snapshots to prevent double-counting. It is included in AI Chat. Sync time: " + st.session_state.get("groww_refreshed", "unknown"))
+        elif gw_connected:
+            st.info("Groww is connected. Select Sync Groww investments above to load live Demat holdings.")
         if current_holdings:
             from alphafund.analytics import holdings_frame, portfolio_summary, allocation_by
             saved_frame = holdings_frame(current_holdings)
