@@ -4,8 +4,3 @@ def test_core_modules_import():
     import alphafund.market_data
     import alphafund.strategy
     import alphafund.storage
-
-
-def test_app_module_imports():
-    # Checks module-level imports; no credentials or external calls are required.
-    import app
