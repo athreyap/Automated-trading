@@ -81,6 +81,14 @@ Install dependencies, then run: pytest -q
 3. Add authenticated user access and persistent cloud database.
 4. Implement Groww only through its current official API after reviewing eligibility, fees, terms and scopes. Keep broker order placement disabled until explicitly tested and approved.
 
+## Groww-inspired UI and AlphaFund AI chat
+
+The app now uses a cleaner investment-dashboard visual system with a light background, green primary actions, compact metric cards, consistent tables and clearer section hierarchy.
+
+A portfolio-aware chat interface is included at the bottom of the dashboard. It uses saved holdings, valuations, transactions and Groww holdings currently in the Streamlit session. OpenAI-backed responses require `OPENAI_API_KEY`; without it, a limited local fallback reports data coverage and missing information. Chat history is session-scoped. The assistant is instructed not to invent prices, NAVs, transactions or returns and cannot place orders.
+
+This is a Groww-inspired design reference, not a copy of Groww branding or proprietary UI.
+
 ## Transaction and valuation analytics (Phase 4)
 
 The dashboard now supports:
