@@ -80,3 +80,24 @@ Install dependencies, then run: pytest -q
 2. Add robust data validation, NSE symbol master and corporate-action handling.
 3. Add authenticated user access and persistent cloud database.
 4. Implement Groww only through its current official API after reviewing eligibility, fees, terms and scopes. Keep broker order placement disabled until explicitly tested and approved.
+
+## Approved multi-asset roadmap
+
+AlphaFund is planned as a **single-user, hybrid-AI investment workspace** for both existing holdings and new investment research. Planned coverage includes equities/ETFs, mutual funds, bonds, PMS and AIF investments.
+
+Supported ingestion paths in the product plan:
+- Groww API (read-only; current supported holdings/CASH endpoints only)
+- Excel / CSV imports
+- Mutual-fund CAS statements
+- Manual entry
+- PMS / AIF statements
+
+Planned capabilities include consolidated portfolio analytics, interactive charts, watchlists, investment discovery, and an AI chatbot that can retrieve portfolio records, uploaded-document passages and prior AlphaFund chats. Hybrid AI means cloud and optional local model providers behind a common router; sensitive document processing must be opt-in for cloud use.
+
+These are **planned capabilities, not currently implemented features**. See:
+- [Product scope and roadmap](docs/product-scope.md)
+- [Canonical data model](docs/data-model.md)
+- [Engineering implementation plan](docs/implementation-plan.md)
+- [Hosting and execution architecture](docs/architecture.md)
+
+Live Groww order placement remains disabled and out of scope.
