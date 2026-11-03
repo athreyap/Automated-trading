@@ -101,8 +101,8 @@ def answer_portfolio_question(question: str, context: dict, api_key: str = "",
                 if invested:
                     top3 = sum(row["cost_basis"] for row in sorted(live_rows, key=lambda item: item["cost_basis"], reverse=True)[:3]) / invested * 100
                     lines.append(f"- Top-three cost-basis concentration: {top3:.1f}%")
-            else:
-                lines.append("No Groww holdings are loaded. Connect Groww credentials and refresh the read-only portfolio.")
+            elif not groww_mf_rows:
+                lines.append("No Groww holdings are loaded. Connect Groww credentials for live Demat stocks or import a Groww mutual-fund statement CSV.")
             if holdings:
                 lines.append("Imported Groww mutual funds are included from saved holdings. Live Groww Demat stocks are shown separately; check for duplicates before combining totals.")
             lines.append("**Limitations:** This local analysis uses recorded purchase cost only. It cannot calculate current market value, unrealised return, sector exposure or risk without current prices, instrument classifications and complete position coverage. Configure OPENAI_API_KEY for deeper natural-language analysis.")
