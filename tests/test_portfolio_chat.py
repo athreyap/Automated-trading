@@ -29,3 +29,21 @@ def test_local_chat_analyses_groww_cost_basis():
     assert "₹2,000.00" in answer
     assert "ABC" in answer
     assert "Top-three cost-basis concentration" in answer
+
+
+def test_groww_imported_mutual_funds_are_in_chat_context():
+    context = build_portfolio_context(holdings=[
+        {"provider": "groww", "asset_type": "mutual_fund", "instrument": "Index Fund"}
+    ])
+    assert context["groww_imported_holdings"][0]["instrument"] == "Index Fund"
+
+
+def test_local_chat_includes_groww_mutual_fund_cost_basis():
+    context = build_portfolio_context(holdings=[
+        {"provider": "groww", "channel": "Groww", "asset_type": "mutual_fund",
+         "instrument": "Index Fund", "quantity": 10, "average_cost": 100}
+    ])
+    answer = answer_portfolio_question("Analyse my mutual fund portfolio", context)
+    assert "Imported Groww mutual-fund records: 1" in answer
+    assert "₹1,000.00" in answer
+    assert "Index Fund" in answer
