@@ -44,8 +44,12 @@ The default example uses INR 1,000 capital: INR 900 strategy allocation and INR 
    # Method B: API key + secret (approve the key daily in Groww Cloud → API Keys)
    GROWW_API_KEY = "your-groww-api-key"
    GROWW_API_SECRET = "your-groww-api-secret"
-   # Optional
-   OPENAI_API_KEY = "your-openai-api-key"
+   # Managed open-weight AI (Hugging Face Inference Providers)
+   HF_TOKEN = "your-huggingface-token"
+   HUGGINGFACE_MODEL = "openai/gpt-oss-120b:cheapest"
+   ALPHAFUND_AI_PROVIDER = "huggingface"
+   # Enable only after deciding to send portfolio records to cloud inference
+   ALPHAFUND_CLOUD_DATA_SHARING = "true"
    ```
 
 5. Save and restart the app. Open its HTTPS `.streamlit.app` URL on Android and sign in.
@@ -71,7 +75,7 @@ Install dependencies, then run: pytest -q
 - Groww portfolio reads require valid credentials, daily API-key approval (for API key + secret flow), and API permissions. Holdings cost value is quantity × average price, not live market value or unrealised P&L.
 - Paper ledger V1 records BUY entries and blocks SELL entries. It is not a complete portfolio/holdings engine.
 - Backtest uses a simple long-only moving-average regime, lags positions by one bar to reduce look-ahead bias, and excludes transaction costs, slippage, dividends and taxes.
-- Optional OpenAI explanations require an API key in the environment. Without it, a local explanation is used. ChatGPT subscription does not include API credits.
+- Managed open-weight AI uses Hugging Face Inference Providers through an OpenAI-compatible API. It requires an HF_TOKEN and provider/model availability; usage may be billed by the selected inference provider. Portfolio data sharing is disabled by default and must be explicitly enabled with ALPHAFUND_CLOUD_DATA_SHARING=true.
 - Render free services may sleep and use ephemeral storage. Do not rely on the free deployment for persistent trade records; use a persistent database/disk before any ongoing use.
 
 ## Suggested next milestones
@@ -186,17 +190,33 @@ The importer currently supports the holdings template only. Transaction history,
 - Mobile typography uses larger body, input and navigation text with stronger contrast. Chat input remains usable on narrow screens.
 
 
-## Local AI model (Ollama)
+## Managed open-weight AI and local Ollama
 
-AlphaFund portfolio analysis defaults to local Ollama (qwen2.5:7b) and uses Ollama /api/chat. Portfolio prompts are sent to the configured Ollama host; OpenAI fallback is disabled by default.
+The default provider is Hugging Face Inference Providers, a managed router for open-weight models. AlphaFund uses its OpenAI-compatible chat endpoint, so no GPU server or laptop process is required for cloud access. The default model is `openai/gpt-oss-120b:cheapest`; Hugging Face documents the `:cheapest` routing policy and the OpenAI-compatible endpoint. Model/provider availability and price can change, so check the provider dashboard before use.
 
-### Install and run locally
+### Streamlit Community Cloud secrets
 
-1. Install Ollama from https://ollama.com/.
-2. Start Ollama and download the model: ollama pull qwen2.5:7b
-3. Install requirements and run streamlit run app.py.
-4. Configure .env or Streamlit Secrets with ALPHAFUND_AI_PROVIDER=ollama, OLLAMA_BASE_URL=http://localhost:11434, OLLAMA_MODEL=qwen2.5:7b and OPENAI_FALLBACK_ENABLED=false.
+Add these values in app Settings → Secrets (never commit tokens):
 
-For cloud-only mode set ALPHAFUND_AI_PROVIDER=openai and configure OPENAI_API_KEY. To permit local-first fallback to OpenAI, set OPENAI_FALLBACK_ENABLED=true; portfolio metrics are then sent to OpenAI if Ollama is unavailable.
+```toml
+HF_TOKEN = "your-huggingface-token"
+HUGGINGFACE_MODEL = "openai/gpt-oss-120b:cheapest"
+ALPHAFUND_AI_PROVIDER = "huggingface"
+ALPHAFUND_CLOUD_DATA_SHARING = "true"
+```
 
-Hosting note: Streamlit Community Cloud cannot reach Ollama on your laptop through localhost. Local inference works when AlphaFund runs on the same laptop as Ollama. A remote Streamlit app needs a secured, authenticated, network-reachable Ollama host or OpenAI cloud mode. Do not expose Ollama directly to the public internet. Install models explicitly with ollama pull; the app does not download them automatically.
+Create an HF token with Inference Providers access at https://huggingface.co/settings/tokens. The managed provider may charge based on model/provider usage. Check current pricing and free quotas before enabling it.
+
+**Privacy gate:** `ALPHAFUND_CLOUD_DATA_SHARING=false` is the default. While false, AlphaFund does not send portfolio records or chat context to managed inference; it uses deterministic local responses/findings. Set it to `true` only after reviewing Hugging Face and the selected inference provider's data policies. Never put tokens in GitHub or chat.
+
+### Local Ollama alternative
+
+For private local inference, install Ollama from https://ollama.com/, run `ollama pull qwen2.5:7b`, then set `ALPHAFUND_AI_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://localhost:11434` and `OLLAMA_MODEL=qwen2.5:7b`. Streamlit Community Cloud cannot reach Ollama on your laptop through localhost. Use this mode when running AlphaFund on the same machine as Ollama.
+
+### Provider routing and financial safeguards
+
+- `ALPHAFUND_AI_PROVIDER=huggingface` (default), `ollama`, or optional `openai`.
+- Python calculates holdings, cost basis, valuation coverage and portfolio metrics; the model only interprets the supplied results.
+- Missing prices/NAVs, partial coverage and stale observations remain explicit; the model must not invent market values, returns or risk statistics.
+- No cloud fallback occurs silently. Live broker orders remain disabled.
+- The Streamlit application and Neon database are independent of the inference provider. This keeps phone access available while the laptop is offline.
