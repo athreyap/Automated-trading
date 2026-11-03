@@ -305,8 +305,40 @@ elif page == "Discover":
 
 elif page == "Portfolio":
     st.divider()
-    st.header("Consolidated portfolio")
-    manual_tab, csv_tab, groww_mf_tab, holdings_tab, transactions_tab, valuations_tab, performance_tab = st.tabs(["Add holding", "Import holdings", "Groww mutual funds", "Holdings", "Import transactions", "Import valuations", "Performance & P&L"])
+    st.header("Your investments")
+    st.caption("One consolidated view across Groww, mutual funds, PMS/AIF and manually added assets.")
+    # One-click broker refresh. Groww's public portfolio API currently exposes Demat
+    # holdings and CASH positions, not mutual-fund folios.
+    gw_token = get_secret("GROWW_ACCESS_TOKEN")
+    gw_key = get_secret("GROWW_API_KEY")
+    gw_secret = get_secret("GROWW_API_SECRET")
+    gw_connected = bool(gw_token or (gw_key and gw_secret))
+    sync_col, status_col = st.columns([1, 2])
+    with sync_col:
+        if st.button("Sync Groww investments", type="primary", use_container_width=True, key="portfolio_sync_groww"):
+            if not gw_connected:
+                st.error("Connect Groww by adding its API credentials in Streamlit Secrets.")
+            else:
+                try:
+                    sync_token = gw_token or generate_access_token(gw_key, gw_secret)
+                    sync_holdings, sync_positions = GrowwReadOnlyClient(sync_token).get_portfolio()
+                    st.session_state["groww_holdings"] = sync_holdings
+                    st.session_state["groww_positions"] = sync_positions
+                    st.session_state["groww_refreshed"] = pd.Timestamp.now(tz="Asia/Kolkata").strftime("%d %b %Y, %I:%M:%S %p IST")
+                    st.session_state["groww_loaded_for_chat"] = True
+                    st.session_state.pop("groww_chat_error", None)
+                    st.success(f"Groww synced: {len(sync_holdings)} equity holdings and {len(sync_positions)} CASH positions.")
+                except GrowwAPIError as exc:
+                    st.error(f"Groww sync failed: {exc}")
+    with status_col:
+        if gw_connected:
+            st.success("Groww API credentials configured · read-only connection")
+            st.caption("Last sync: " + st.session_state.get("groww_refreshed", "Not synced this session"))
+        else:
+            st.warning("Groww is not connected. Add GROWW_ACCESS_TOKEN or GROWW_API_KEY + GROWW_API_SECRET in Streamlit Secrets.")
+    groww_mf_count = sum(1 for row in portfolio.list_holdings() if str(row.get("provider", "")).lower() == "groww" and str(row.get("asset_type", "")).lower() == "mutual_fund")
+    st.info(f"Mutual funds saved from Groww/CAS: {groww_mf_count}. Groww's documented API does not expose mutual-fund folios, so these cannot be synced by the broker API yet. CAS/manual import remains a fallback; AlphaFund will not pretend those units were fetched live.")
+    manual_tab, csv_tab, groww_mf_tab, holdings_tab, transactions_tab, valuations_tab, performance_tab = st.tabs(["Add manually", "Import fallback", "Groww MF / CAS", "Holdings overview", "Transactions", "Valuations", "Performance"])
     
     with manual_tab:
         with st.form("manual_holding"):
@@ -357,8 +389,8 @@ elif page == "Portfolio":
                 st.error(f"CSV validation failed: {exc}")
     
     with groww_mf_tab:
-        st.markdown("#### Import Groww mutual-fund holdings")
-        st.caption("Groww's documented Trading API does not expose mutual-fund folio holdings. Export/download your Groww mutual-fund holdings or statement as CSV, map it to this template, and import it here. Imported records are stored in the consolidated portfolio and included in AI Chat.")
+        st.markdown("#### Mutual-fund holdings from CAS")
+        st.caption("This is a fallback import—not a live Groww API sync. Groww's documented Trading API does not expose mutual-fund folios. Use a CAMS/KFintech/MFCentral CAS export or a Groww-provided statement, convert it to the AlphaFund template, and import once. Holdings then remain in the consolidated portfolio and AI Chat.")
         groww_mf_template = (
             "account_name,account_type,provider,asset_type,instrument_name,identifier,exchange,currency,quantity,average_cost,as_of_date\n"
             "Groww Mutual Funds,mutual_fund,groww,mutual_fund,Example Flexi Cap Fund,INF000000000,,INR,125.50,82.40,2026-11-03\n"
@@ -384,7 +416,7 @@ elif page == "Portfolio":
                     st.rerun()
             except Exception as exc:
                 st.error(f"Groww mutual-fund CSV validation failed: {exc}")
-        st.info("After import, these funds appear in Portfolio → Holdings and are available to Ask AlphaFund. Add dated NAV observations under Import valuations to calculate current value and unrealised P&L.")
+        st.info("After a one-time import, fund units are saved and included in Holdings, portfolio analytics and AI Chat. Refresh AMFI NAV data in Discover and add matching NAV observations to calculate indicative value. A future official CAS integration can replace this fallback.")
 
     with holdings_tab:
         current_holdings = portfolio.list_holdings()
@@ -420,7 +452,7 @@ elif page == "Portfolio":
             st.dataframe(display_holdings, use_container_width=True, hide_index=True)
             st.caption("Performance, unrealised P&L, sector exposure and risk metrics require dated market valuations and/or transaction history. They are not estimated from purchase cost.")
         else:
-            st.info("No consolidated holdings yet. Add a holding manually or import the CSV template.")
+            st.info("No holdings saved yet. Start with Sync Groww investments, then add non-Groww assets manually or use the one-time CAS/file fallback.")
     
     
     with transactions_tab:
