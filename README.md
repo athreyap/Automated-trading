@@ -7,8 +7,8 @@ A Streamlit-based Indian equities research dashboard with technical signals, a s
 - Paper trading only. Live trading is disabled and order placement is not implemented.
 - Groww integration calls only official read-only holdings and CASH positions GET endpoints. No order placement, modification or cancellation methods are present.
 - Hosting choice: Streamlit Community Cloud for the dashboard and read-only portfolio view. It does not provide stable outbound IP addresses, so it must not be used as the future Groww order-execution host.
-- The dashboard requires APP_PASSWORD and keeps GROWW_ACCESS_TOKEN in server-side Streamlit secrets. Never commit or share secrets.
-- Groww access tokens expire daily at 6:00 AM IST; update the Streamlit secret after generating a fresh token.
+- The dashboard requires APP_PASSWORD and keeps Groww credentials in server-side Streamlit secrets. Never commit or share secrets.
+- Groww supports a direct access token (expires daily at 6:00 AM IST) or API key + secret authentication. The app can generate an access token on portfolio refresh using the API key + secret; the API key must first be approved each day on Groww Cloud → API Keys.
 - Yahoo Finance is used for indicative historical market data. Availability, accuracy and delays are controlled by the data provider.
 - The paper ledger is local SQLite. On ephemeral cloud hosting, its contents may be lost on restart or redeploy.
 - This is educational software, not investment advice. Backtests do not predict future returns.
@@ -38,13 +38,18 @@ The default example uses INR 1,000 capital: INR 900 strategy allocation and INR 
 
    ```toml
    APP_PASSWORD = "choose-a-long-unique-password"
-   GROWW_ACCESS_TOKEN = "your-current-groww-access-token"
+   # Choose ONE Groww authentication method:
+   # Method A: direct token (expires daily at 6:00 AM IST)
+   # GROWW_ACCESS_TOKEN = "your-current-groww-access-token"
+   # Method B: API key + secret (approve the key daily in Groww Cloud → API Keys)
+   GROWW_API_KEY = "your-groww-api-key"
+   GROWW_API_SECRET = "your-groww-api-secret"
    # Optional
    OPENAI_API_KEY = "your-openai-api-key"
    ```
 
 5. Save and restart the app. Open its HTTPS `.streamlit.app` URL on Android and sign in.
-6. Generate a Groww access token from Profile → Settings → Trading APIs. Tokens expire at 6:00 AM IST daily, so refresh the token and update the secret when it expires.
+6. For API key + secret authentication, approve the key each day in Groww Cloud → API Keys. In the app, click **Refresh Groww portfolio**; AlphaFund AI generates a fresh access token using Groww's documented checksum flow. Alternatively, configure GROWW_ACCESS_TOKEN directly; direct tokens expire at 6:00 AM IST daily.
 
 The app fails closed if APP_PASSWORD is missing. This is a basic single-user password gate, not full identity management. Keep the URL private and use a unique password. Verify API access and subscription eligibility in your Groww account.
 
@@ -63,7 +68,7 @@ Install dependencies, then run: pytest -q
 
 ## Current limitations
 
-- Groww portfolio reads require a valid official access token and API permissions. Holdings cost value is quantity × average price, not live market value or unrealised P&L.
+- Groww portfolio reads require valid credentials, daily API-key approval (for API key + secret flow), and API permissions. Holdings cost value is quantity × average price, not live market value or unrealised P&L.
 - Paper ledger V1 records BUY entries and blocks SELL entries. It is not a complete portfolio/holdings engine.
 - Backtest uses a simple long-only moving-average regime, lags positions by one bar to reduce look-ahead bias, and excludes transaction costs, slippage, dividends and taxes.
 - Optional OpenAI explanations require an API key in the environment. Without it, a local explanation is used. ChatGPT subscription does not include API credits.
