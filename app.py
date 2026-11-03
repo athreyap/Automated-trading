@@ -450,13 +450,20 @@ elif page == "Portfolio":
                                              saved_transactions_for_review)
             if st.session_state.get("portfolio_review_fingerprint") != fingerprint:
                 with st.spinner("AlphaFund is reviewing your portfolio…"):
+                     ai_provider = (get_secret("ALPHAFUND_AI_PROVIDER") or "ollama").lower()
                     st.session_state["portfolio_review_text"] = ai_interpretation(
-                        review, get_secret("OPENAI_API_KEY"),
-                        get_secret("OPENAI_MODEL") or settings.openai_model)
+                        review, api_key=get_secret("OPENAI_API_KEY"),
+                        model=get_secret("OPENAI_MODEL") or settings.openai_model,
+                        provider=ai_provider,
+                        ollama_model=get_secret("OLLAMA_MODEL") or "qwen2.5:7b",
+                        ollama_base_url=get_secret("OLLAMA_BASE_URL") or "http://localhost:11434",
+                        allow_cloud_fallback=get_secret("OPENAI_FALLBACK_ENABLED").lower() == "true",
+                    )
+                    st.session_state["portfolio_ai_provider_used"] = ai_provider
                     st.session_state["portfolio_review_fingerprint"] = fingerprint
             st.markdown("#### AlphaFund AI analyst")
             st.markdown(st.session_state.get("portfolio_review_text", "Portfolio review is being prepared."))
-            st.caption("Analysis refreshes automatically when holdings, valuations or transactions change. Financial metrics are computed by deterministic code; AI interprets the supplied results.")
+            st.caption("Analysis refreshes automatically when holdings, valuations or transactions change. Financial metrics are deterministic. Provider: " + (get_secret("ALPHAFUND_AI_PROVIDER") or "ollama").upper() + ". Local Ollama keeps portfolio prompts on the configured Ollama host; cloud fallback is off unless explicitly enabled.")
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Holding records", f"{summary['holding_count']:,}")
             k2.metric("Known recorded cost basis", f"₹{summary['cost_basis']:,.2f}")
