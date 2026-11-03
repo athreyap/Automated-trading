@@ -14,7 +14,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
 def _database_url() -> str:
-    return os.getenv("DATABASE_URL", "sqlite:///data/alphafund.db").strip()
+    url = os.getenv("DATABASE_URL", "sqlite:///data/alphafund.db").strip()
+    if url.startswith("postgres://"):
+        url = "postgresql+psycopg://" + url[len("postgres://"):]
+    elif url.startswith("postgresql://") and "+psycopg" not in url:
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
 
 
 class Base(DeclarativeBase):
