@@ -5,12 +5,20 @@ import json
 
 
 def build_portfolio_context(holdings=None, valuations=None, transactions=None, groww_holdings=None):
+    # Storage returns dated snapshots newest-first. Keep only the latest row for
+    # each account/security so a sync history is never summed as multiple assets.
+    latest = {}
+    for row in (holdings or []):
+        key = (str(row.get("account") or ""), str(row.get("identifier") or ""))
+        if key not in latest:
+            latest[key] = row
+    current_holdings = list(latest.values())
     return {
-        "saved_holdings": (holdings or [])[:300],
+        "saved_holdings": current_holdings[:300],
         "valuation_observations": (valuations or [])[-300:],
         "transactions": (transactions or [])[-300:],
         "groww_live_holdings": (groww_holdings or [])[:300],
-        "groww_imported_holdings": [row for row in (holdings or []) if str(row.get("provider", "")).strip().lower() == "groww"][:300],
+        "groww_imported_holdings": [row for row in current_holdings if str(row.get("provider", "")).strip().lower() == "groww"][:300],
         "data_notes": [
             "Only supplied records are available; do not assume missing assets or transactions.",
             "Include imported Groww mutual-fund holdings from saved_holdings and groww_imported_holdings in portfolio analysis.",
