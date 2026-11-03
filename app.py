@@ -217,7 +217,7 @@ def portfolio_store():
     return store
 
 portfolio = portfolio_store()
-manual_tab, csv_tab, holdings_tab = st.tabs(["Add holding", "Import CSV", "Portfolio holdings"])
+manual_tab, csv_tab, holdings_tab, transactions_tab, valuations_tab, performance_tab = st.tabs(["Add holding", "Import holdings", "Holdings", "Import transactions", "Import valuations", "Performance & P&L"])
 
 with manual_tab:
     with st.form("manual_holding"):
@@ -300,3 +300,103 @@ with holdings_tab:
         st.caption("Performance, unrealised P&L, sector exposure and risk metrics require dated market valuations and/or transaction history. They are not estimated from purchase cost.")
     else:
         st.info("No consolidated holdings yet. Add a holding manually or import the CSV template.")
+
+
+with transactions_tab:
+    st.caption("Import broker transaction history. BUY/SIP/contribution amounts are treated as investor outflows; SELL/dividend/coupon/distribution amounts as inflows for XIRR.")
+    st.download_button("Download transactions CSV template",
+        data="account_name,provider,asset_type,instrument_name,identifier,transaction_type,transaction_date,quantity,price,amount,currency,external_id,notes\nGroww Demat,groww,equity,Reliance,RELIANCE,BUY,2026-10-01,2,1200,2400,INR,TXN-001,Example only\n",
+        file_name="alphafund_transactions_template.csv", mime="text/csv")
+    from alphafund.imports import validate_transactions_csv
+    tx_upload = st.file_uploader("Upload transactions CSV", type=["csv"], key="transactions_csv_upload")
+    if tx_upload is not None:
+        try:
+            tx_preview, tx_checksum = validate_transactions_csv(tx_upload.getvalue())
+            st.success(f"Validated {len(tx_preview)} transactions. Review before importing.")
+            st.dataframe(tx_preview, use_container_width=True, hide_index=True)
+            if st.button("Import transactions", type="primary"):
+                result = portfolio.import_transactions(tx_preview.to_dict(orient="records"), tx_upload.name, tx_checksum)
+                if result["duplicate_file"]:
+                    st.warning("This exact file was already imported.")
+                else:
+                    st.success(f"Imported {result['inserted']}; skipped {result['skipped']} duplicates.")
+                st.rerun()
+        except Exception as exc:
+            st.error(f"Transaction CSV validation failed: {exc}")
+    existing_transactions = portfolio.list_transactions()
+    if existing_transactions:
+        st.markdown("**Imported transaction ledger**")
+        st.dataframe(pd.DataFrame(existing_transactions), use_container_width=True, hide_index=True)
+
+with valuations_tab:
+    st.caption("Import dated observations. Use observation_type=market_value for total position value, or price/nav for per-unit values.")
+    st.download_button("Download valuation CSV template",
+        data="account_name,provider,asset_type,instrument_name,identifier,valuation_date,value,observation_type,source,quality,currency\nGroww Demat,groww,equity,Reliance,RELIANCE,2026-11-03,2500,price,Yahoo Finance,indicative,INR\n",
+        file_name="alphafund_valuations_template.csv", mime="text/csv")
+    from alphafund.imports import validate_valuations_csv
+    val_upload = st.file_uploader("Upload valuations CSV", type=["csv"], key="valuations_csv_upload")
+    if val_upload is not None:
+        try:
+            val_preview, val_checksum = validate_valuations_csv(val_upload.getvalue())
+            st.success(f"Validated {len(val_preview)} valuation observations. Review before importing.")
+            st.dataframe(val_preview, use_container_width=True, hide_index=True)
+            if st.button("Import valuations", type="primary"):
+                result = portfolio.import_valuations(val_preview.to_dict(orient="records"), val_upload.name, val_checksum)
+                if result["duplicate_file"]:
+                    st.warning("This exact file was already imported.")
+                else:
+                    st.success(f"Imported {result['inserted']}; skipped {result['skipped']} duplicates.")
+                st.rerun()
+        except Exception as exc:
+            st.error(f"Valuation CSV validation failed: {exc}")
+    existing_valuations = portfolio.list_valuations()
+    if existing_valuations:
+        st.markdown("**Valuation history**")
+        st.dataframe(pd.DataFrame(existing_valuations), use_container_width=True, hide_index=True)
+
+with performance_tab:
+    from alphafund.analytics import valuation_enriched_holdings, investor_xirr, portfolio_valuation_history
+    saved_holdings = portfolio.list_holdings()
+    saved_valuations = portfolio.list_valuations()
+    saved_transactions = portfolio.list_transactions()
+    if not saved_holdings:
+        st.info("Import holdings first, then add matching valuation observations.")
+    else:
+        latest_frame = pd.DataFrame(saved_holdings)
+        latest_frame["as_of_date"] = pd.to_datetime(latest_frame["as_of_date"], errors="coerce")
+        latest_frame = latest_frame.sort_values("as_of_date").drop_duplicates(["account", "identifier"], keep="last")
+        current_records = latest_frame.to_dict(orient="records")
+        valued = valuation_enriched_holdings(current_records, saved_valuations)
+        valued_rows = valued.dropna(subset=["market_value"])
+        known_cost = valued["cost_basis"].notna()
+        total_market_value = float(valued_rows["market_value"].sum())
+        total_cost = float(valued.loc[known_cost, "cost_basis"].sum())
+        complete_value_coverage = len(valued_rows) == len(valued)
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("Valued positions", f"{len(valued_rows):,} / {len(valued):,}")
+        p2.metric("Latest reported / indicative value", f"₹{total_market_value:,.2f}" if len(valued_rows) else "Unavailable")
+        pnl = float((valued_rows["unrealised_pnl"].dropna()).sum())
+        pnl_coverage = len(valued_rows.dropna(subset=["unrealised_pnl"])) == len(valued)
+        p3.metric("Unrealised P&L", f"₹{pnl:,.2f}" if pnl_coverage and complete_value_coverage else "Partial / unavailable")
+        p4.metric("Return on recorded cost", f"{(pnl / total_cost * 100):.2f}%" if pnl_coverage and complete_value_coverage and total_cost > 0 else "Unavailable")
+        st.caption("Latest matching valuation per account/security is used. P&L and return are shown only when all current positions have both a valuation and recorded cost. Values across mixed currencies are not converted; use one currency per portfolio.")
+        if len(valued_rows):
+            st.markdown("**Position valuation and unrealised P&L**")
+            st.dataframe(valued[["account", "instrument", "identifier", "quantity", "cost_basis",
+                "market_value", "unrealised_pnl", "valuation_date", "valuation_source"]], use_container_width=True, hide_index=True)
+        history = portfolio_valuation_history(saved_valuations)
+        if not history.empty:
+            st.markdown("**Reported portfolio valuation history**")
+            history["valuation_date"] = pd.to_datetime(history["valuation_date"])
+            st.line_chart(history.set_index("valuation_date")["portfolio_value"])
+            st.caption("History includes only explicit total market_value observations in a single currency. Price and NAV observations are not summed as position values.")
+        else:
+            st.info("No portfolio history chart yet. Import total market_value observations for each position and date.")
+        if saved_transactions:
+            xirr_value = investor_xirr(saved_transactions,
+                terminal_value=total_market_value if complete_value_coverage else None,
+                terminal_date=pd.Timestamp.now().date() if complete_value_coverage else None)
+            st.metric("Investor XIRR", f"{xirr_value * 100:.2f}%" if xirr_value is not None and complete_value_coverage else "Not enough complete cash-flow data")
+            st.caption("XIRR uses imported dated transaction amounts plus the latest complete portfolio value as terminal value. Review transaction signs/types and ensure transaction history is complete before relying on this metric.")
+        else:
+            st.info("Import transaction history to calculate investor-level XIRR.")
