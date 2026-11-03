@@ -40,7 +40,18 @@ st.set_page_config(page_title="AlphaFund AI V1", page_icon="📈", layout="wide"
 require_app_login()
 st.markdown("""
 <style>
-:root { color-scheme: light; }
+:root { color-scheme: light; font-size:16px; }
+html, body, [data-testid="stApp"], [data-testid="stAppViewContainer"] {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+    font-size:16px !important;
+}
+[data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li,
+[data-testid="stText"], .stText, .stMarkdown { font-size:16px !important; line-height:1.55 !important; }
+[data-testid="stCaption"], [data-testid="stCaption"] p { font-size:13px !important; line-height:1.45 !important; color:#52665c !important; }
+label, [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p { font-size:15px !important; color:#17251f !important; }
+[data-testid="stChatMessage"] p { font-size:15px !important; line-height:1.55 !important; }
+[data-testid="stChatInput"] textarea { font-size:16px !important; color:#17251f !important; }
+[data-testid="stRadio"] label, [data-testid="stRadio"] label p { font-size:14px !important; color:#26372f !important; }
 html, body, [data-testid="stApp"], [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] { background:#f6f8f7 !important; color:#17251f !important; }
 [data-testid="stHeader"] { background:rgba(246,248,247,.96) !important; }
 .block-container { max-width:1440px; padding-top:1.35rem; padding-bottom:7rem; }
@@ -108,7 +119,6 @@ portfolio = portfolio_store()
 # App-wide navigation
 page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "AI Chat"], horizontal=True,
                 label_visibility="collapsed", key="main_navigation")
-st.markdown('<div class="af-subtitle">Home  ·  Portfolio  ·  Discover  ·  AI Chat</div>', unsafe_allow_html=True)
 
 if page == "Home":
     st.subheader("Groww portfolio — read only")
@@ -202,17 +212,42 @@ if page == "Home":
     st.info("Use Portfolio to manage holdings and performance, Discover to research securities, or AI Chat to ask questions about your investment data.")
 
 elif page == "Discover":
+    st.subheader("Mutual funds")
+    st.caption("Latest scheme NAVs are sourced from AMFI. NAV is per unit and is not your holding value; add your units and purchase history through Portfolio imports.")
+    if st.button("Load latest AMFI NAV data", type="primary", key="load_amfi_nav"):
+        try:
+            from alphafund.amfi import fetch_latest_nav
+            with st.spinner("Downloading the official AMFI NAV feed…"):
+                st.session_state["amfi_nav_frame"] = fetch_latest_nav()
+                st.session_state["amfi_nav_loaded_at"] = pd.Timestamp.now().strftime("%d %b %Y, %H:%M")
+            st.success(f"Loaded {len(st.session_state['amfi_nav_frame']):,} scheme NAV records.")
+        except Exception as exc:
+            st.error(f"AMFI NAV download failed: {exc}")
+    if "amfi_nav_frame" in st.session_state:
+        nav_frame = st.session_state["amfi_nav_frame"]
+        st.caption(f"Feed fetched: {st.session_state.get('amfi_nav_loaded_at', 'Unknown')} · NAV date is shown per scheme.")
+        nav_query = st.text_input("Search mutual-fund scheme", placeholder="e.g. Nifty 50 Index, Parag Parikh Flexi Cap")
+        if nav_query.strip():
+            from alphafund.amfi import search_nav_schemes
+            matches = search_nav_schemes(nav_frame, nav_query, limit=100)
+            if matches.empty:
+                st.info("No matching scheme names. Try a shorter search term.")
+            else:
+                st.dataframe(matches[["scheme_code", "scheme_name", "nav", "nav_date", "isin_growth"]].rename(columns={
+                    "scheme_code": "AMFI code", "scheme_name": "Scheme", "nav": "Latest NAV (₹)",
+                    "nav_date": "NAV date", "isin_growth": "Growth ISIN"
+                }), use_container_width=True, hide_index=True)
+        else:
+            st.info("Search by scheme name to view its latest NAV.")
+    else:
+        st.info("Load the AMFI feed to search current scheme NAVs.")
+    st.link_button("AMFI official NAV downloads", "https://www.amfiindia.com/net-asset-value/nav-download")
+    st.warning("Groww's documented portfolio API returns Demat stock holdings and CASH/FNO positions, not mutual-fund folios. To add mutual-fund units, import your CAS statement after converting it to the holdings template, or enter holdings manually. Scheme NAVs alone do not tell AlphaFund how many units you own.")
 
     st.divider()
-    st.subheader("Mutual fund research")
-    st.caption("Mutual-fund NAV lookup and scheme comparison are being connected to AMFI data. Do not use a stock quote as a mutual-fund NAV.")
-    st.link_button("Open AMFI NAV data", "https://www.amfiindia.com/net-asset-value/nav-history")
-    st.subheader("Research coverage")
-    st.write("Equities: historical prices and technical indicators are available above. Mutual funds: AMFI NAV integration is the next data-source milestone. Bonds, PMS and AIF: use the portfolio import tools until dedicated market/manager feeds are connected.")
-
+    st.subheader("Equity research")
     symbol_input = st.text_input("NSE symbol", value="RELIANCE", help="Enter a ticker such as RELIANCE, TCS, INFY or SBIN.")
     period = st.selectbox("History", ["3mo", "6mo", "1y", "2y", "5y"], index=1)
-    
     if st.button("Fetch market data and analyse", type="primary"):
         try:
             symbol = normalize_symbol(symbol_input)
@@ -221,7 +256,6 @@ elif page == "Discover":
             st.session_state["analysis_symbol"] = symbol
         except Exception as exc:
             st.error(str(exc))
-    
     if "analysis_data" in st.session_state:
         data = st.session_state["analysis_data"]
         symbol = st.session_state["analysis_symbol"]
@@ -243,7 +277,6 @@ elif page == "Discover":
         b2.metric("Backtest return", f"{result['return_pct']:.2f}%")
         b3.metric("Position changes", str(result["trades"]))
         st.caption("Backtest is a simplified moving-average regime test. It excludes brokerage, taxes, slippage and corporate-action edge cases.")
-    
     st.divider()
     st.subheader("Paper trade entry")
     st.caption("V1 records BUY entries only; full holdings and SELL accounting are not yet implemented.")
@@ -262,7 +295,6 @@ elif page == "Discover":
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
-    
     st.subheader("Paper ledger")
     trades = list_trades()
     if trades:
@@ -467,6 +499,28 @@ elif page == "AI Chat":
     st.header("Ask AlphaFund")
     st.caption("Ask questions about your holdings, allocation, transactions, NAVs, valuations and investment research. Answers use the data available in this app.")
     from alphafund.portfolio_chat import build_portfolio_context, answer_portfolio_question
+    # Load Groww read-only data on first visit to Chat, so chat does not depend on a prior Home-page click.
+    groww_credentials = (
+        get_secret("GROWW_ACCESS_TOKEN"),
+        get_secret("GROWW_API_KEY"),
+        get_secret("GROWW_API_SECRET"),
+    )
+    if not st.session_state.get("groww_loaded_for_chat") and any(groww_credentials):
+        try:
+            token = groww_credentials[0] or generate_access_token(groww_credentials[1], groww_credentials[2])
+            live_holdings, live_positions = GrowwReadOnlyClient(token).get_portfolio()
+            st.session_state["groww_holdings"] = live_holdings
+            st.session_state["groww_positions"] = live_positions
+            st.session_state["groww_refreshed"] = pd.Timestamp.now(tz="Asia/Kolkata").strftime("%d %b %Y, %I:%M:%S %p IST")
+            st.session_state["groww_loaded_for_chat"] = True
+            st.session_state.pop("groww_chat_error", None)
+        except GrowwAPIError as exc:
+            st.session_state["groww_chat_error"] = str(exc)
+            st.session_state["groww_loaded_for_chat"] = True
+    if st.session_state.get("groww_chat_error"):
+        st.warning("Groww data could not be loaded for this chat session: " + st.session_state["groww_chat_error"])
+    elif not any(groww_credentials):
+        st.info("Connect Groww in Streamlit Secrets to load live holdings here. The chatbot currently sees saved AlphaFund holdings only.")
     chat_holdings = portfolio.list_holdings()
     chat_valuations = portfolio.list_valuations()
     chat_transactions = portfolio.list_transactions()
