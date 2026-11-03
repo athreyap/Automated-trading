@@ -32,18 +32,54 @@ def answer_portfolio_question(question: str, context: dict, api_key: str = "",
         groww = context.get("groww_live_holdings", [])
         tx = context.get("transactions", [])
         vals = context.get("valuation_observations", [])
-        if any(k in q for k in ("holding", "own", "portfolio", "position")):
-            return (f"I can see {len(holdings)} saved holding records and {len(groww)} live Groww holding records. "
-                    f"There are {len(vals)} saved valuation observations and {len(tx)} transactions. "
-                    "Configure OPENAI_API_KEY for natural-language analysis of these records.")
+
+        def groww_cost_rows(rows):
+            result = []
+            for row in rows:
+                try:
+                    quantity = float(row.get("quantity") or 0)
+                    average = float(row.get("average_price") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if quantity <= 0:
+                    continue
+                symbol = str(row.get("trading_symbol") or row.get("isin") or "Unknown")
+                result.append({"symbol": symbol, "quantity": quantity,
+                               "average_price": average, "cost_basis": quantity * average})
+            return result
+
+        live_rows = groww_cost_rows(groww)
+        if any(k in q for k in ("analyse", "analyze", "summary", "allocation", "concentration", "portfolio", "holding", "position", "own")):
+            lines = [
+                f"**Portfolio data loaded**",
+                f"- Groww Demat stock holdings: {len(live_rows)}",
+                f"- AlphaFund saved holding records: {len(holdings)}",
+                f"- Saved transactions: {len(tx)}",
+                f"- Saved valuation observations: {len(vals)}",
+            ]
+            if live_rows:
+                invested = sum(row["cost_basis"] for row in live_rows)
+                lines.append(f"- Groww recorded cost basis: ₹{invested:,.2f} (quantity × average purchase price; not current market value)")
+                lines.append("**Largest Groww positions by recorded cost basis**")
+                for row in sorted(live_rows, key=lambda item: item["cost_basis"], reverse=True)[:5]:
+                    weight = (row["cost_basis"] / invested * 100) if invested else 0
+                    lines.append(f"- {row['symbol']}: {row['quantity']:,.4g} units × ₹{row['average_price']:,.2f} = ₹{row['cost_basis']:,.2f} ({weight:.1f}% of recorded Groww cost)")
+                if invested:
+                    top3 = sum(row["cost_basis"] for row in sorted(live_rows, key=lambda item: item["cost_basis"], reverse=True)[:3]) / invested * 100
+                    lines.append(f"- Top-three cost-basis concentration: {top3:.1f}%")
+            else:
+                lines.append("No Groww holdings are loaded. Connect Groww credentials and refresh the read-only portfolio.")
+            if holdings:
+                lines.append("Saved AlphaFund holdings are included separately; they are not automatically merged with Groww records to avoid double-counting.")
+            lines.append("**Limitations:** This local analysis uses recorded purchase cost only. It cannot calculate current market value, unrealised return, sector exposure or risk without current prices, instrument classifications and complete position coverage. Configure OPENAI_API_KEY for deeper natural-language analysis.")
+            return "\n".join(lines)
         if any(k in q for k in ("transaction", "sip", "buy", "sell")):
             return f"There are {len(tx)} saved transactions. Import complete transaction history before relying on return calculations."
         if any(k in q for k in ("nav", "price", "valuation", "value", "return", "p&l", "pnl")):
             return (f"There are {len(vals)} saved valuation observations. "
                     "I will not infer a current value or return when a matching dated price/NAV is missing. "
                     "Configure OPENAI_API_KEY to enable portfolio-aware natural-language analysis.")
-        return ("The local chat mode can confirm record counts, but does not yet perform open-ended reasoning. "
-                "Add OPENAI_API_KEY in server-side Streamlit Secrets to enable portfolio-aware chat.")
+        return ("I can calculate basic Groww cost-basis summaries locally. For deeper portfolio reasoning across market data, documents and research, configure OPENAI_API_KEY in Streamlit Secrets.")
     try:
         from openai import OpenAI
         messages = [
