@@ -441,27 +441,65 @@ elif page == "Portfolio":
             current_frame = current_frame[current_frame["quantity"] > 0].copy()
             summary = portfolio_summary(current_frame)
             st.markdown("#### Consolidated portfolio overview")
+            from alphafund.analyst import portfolio_review, ai_interpretation, review_fingerprint
+            saved_valuations_for_review = portfolio.list_valuations()
+            saved_transactions_for_review = portfolio.list_transactions()
+            review = portfolio_review(current_frame.to_dict("records"), saved_valuations_for_review,
+                                      saved_transactions_for_review)
+            fingerprint = review_fingerprint(current_frame.to_dict("records"), saved_valuations_for_review,
+                                             saved_transactions_for_review)
+            if st.session_state.get("portfolio_review_fingerprint") != fingerprint:
+                with st.spinner("AlphaFund is reviewing your portfolio…"):
+                    st.session_state["portfolio_review_text"] = ai_interpretation(
+                        review, get_secret("OPENAI_API_KEY"),
+                        get_secret("OPENAI_MODEL") or settings.openai_model)
+                    st.session_state["portfolio_review_fingerprint"] = fingerprint
+            st.markdown("#### AlphaFund AI analyst")
+            st.markdown(st.session_state.get("portfolio_review_text", "Portfolio review is being prepared."))
+            st.caption("Analysis refreshes automatically when holdings, valuations or transactions change. Financial metrics are computed by deterministic code; AI interprets the supplied results.")
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Holding records", f"{summary['holding_count']:,}")
             k2.metric("Known recorded cost basis", f"₹{summary['cost_basis']:,.2f}")
             k3.metric("Cost data coverage", f"{summary['cost_coverage_pct']:.1f}%")
             k4.metric("Missing average cost", f"{summary['missing_cost_count']:,}")
             st.caption("Cost basis includes only records with a recorded average cost. Multiple dated snapshots may exist; this register is not a deduplicated current-position valuation.")
-            left, right = st.columns(2)
-            with left:
-                st.markdown("**Cost basis by asset class**")
-                asset_alloc = allocation_by(current_frame, "asset_type")
+            st.markdown("#### Portfolio analytics")
+            chart_left, chart_right = st.columns(2)
+            asset_alloc = allocation_by(current_frame, "asset_type")
+            with chart_left:
+                st.markdown("**Asset allocation · recorded cost basis**")
                 if not asset_alloc.empty:
-                    st.bar_chart(asset_alloc.set_index("asset_type")["cost_basis"])
+                    import plotly.express as px
+                    fig = px.pie(asset_alloc, names="asset_type", values="cost_basis", hole=0.62)
+                    fig.update_layout(margin=dict(t=12,b=12,l=8,r=8), legend_title_text="Asset class")
+                    st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.info("No cost basis available for this chart.")
-            with right:
-                st.markdown("**Cost basis by account**")
-                account_alloc = allocation_by(current_frame, "account")
-                if not account_alloc.empty:
-                    st.bar_chart(account_alloc.set_index("account")["cost_basis"])
+                    st.info("No recorded cost basis for allocation.")
+            with chart_right:
+                st.markdown("**Largest positions · recorded cost basis**")
+                largest = current_frame.dropna(subset=["cost_basis"]).nlargest(10, "cost_basis")
+                if not largest.empty:
+                    import plotly.express as px
+                    fig = px.bar(largest.sort_values("cost_basis"), x="cost_basis", y="instrument",
+                                 orientation="h", color="asset_type", labels={
+                                     "cost_basis":"Cost basis (₹)", "instrument":"Investment",
+                                     "asset_type":"Asset class"})
+                    fig.update_layout(margin=dict(t=12,b=12,l=8,r=8), yaxis_title="")
+                    st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.info("No account-level cost basis available.")
+                    st.info("No position cost data available.")
+            valuation_history = portfolio_valuation_history(portfolio.list_valuations())
+            if not valuation_history.empty:
+                st.markdown("**Reported portfolio value over time**")
+                import plotly.express as px
+                history_chart = valuation_history.copy()
+                history_chart["valuation_date"] = pd.to_datetime(history_chart["valuation_date"])
+                fig = px.area(history_chart, x="valuation_date", y="portfolio_value",
+                              labels={"valuation_date":"Date","portfolio_value":"Portfolio value (₹)"})
+                fig.update_layout(margin=dict(t=12,b=12,l=8,r=8))
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Performance chart will appear when dated total market-value observations are imported. Cost basis is not a substitute for performance.")
             st.markdown("**Saved holdings and data quality**")
             display_holdings = saved_frame.copy()
             display_holdings = display_holdings.rename(columns={"channel": "Channel", "source_file": "Source file"})
