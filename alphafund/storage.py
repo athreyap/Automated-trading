@@ -406,9 +406,10 @@ class PortfolioStore:
                 .outerjoin(ImportBatch, Holding.source_batch_id == ImportBatch.id)
                 .order_by(Holding.as_of_date.desc(), Instrument.name)
             ).all()
-            return [{"account": a.name, "instrument": i.name, "identifier": i.identifier,
+            return [{"account": a.name, "provider": a.provider, "instrument": i.name, "identifier": i.identifier,
                      "asset_type": i.instrument_type, "quantity": h.quantity,
                      "average_cost": h.average_cost, "as_of_date": h.as_of_date.isoformat(),
                      "source": h.source,
-                     "channel": batch.filename if batch and batch.filename else h.source}
+                     "channel": "Groww" if str(a.provider).strip().lower() == "groww" else (batch.filename if batch and batch.filename else h.source),
+                     "source_file": batch.filename if batch and batch.filename else None}
                     for h, a, i, batch in rows]
