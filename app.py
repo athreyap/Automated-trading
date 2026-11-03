@@ -306,7 +306,7 @@ elif page == "Discover":
 elif page == "Portfolio":
     st.divider()
     st.header("Consolidated portfolio")
-    manual_tab, csv_tab, holdings_tab, transactions_tab, valuations_tab, performance_tab = st.tabs(["Add holding", "Import holdings", "Holdings", "Import transactions", "Import valuations", "Performance & P&L"])
+    manual_tab, csv_tab, groww_mf_tab, holdings_tab, transactions_tab, valuations_tab, performance_tab = st.tabs(["Add holding", "Import holdings", "Groww mutual funds", "Holdings", "Import transactions", "Import valuations", "Performance & P&L"])
     
     with manual_tab:
         with st.form("manual_holding"):
@@ -356,6 +356,36 @@ elif page == "Portfolio":
             except Exception as exc:
                 st.error(f"CSV validation failed: {exc}")
     
+    with groww_mf_tab:
+        st.markdown("#### Import Groww mutual-fund holdings")
+        st.caption("Groww's documented Trading API does not expose mutual-fund folio holdings. Export/download your Groww mutual-fund holdings or statement as CSV, map it to this template, and import it here. Imported records are stored in the consolidated portfolio and included in AI Chat.")
+        groww_mf_template = (
+            "account_name,account_type,provider,asset_type,instrument_name,identifier,exchange,currency,quantity,average_cost,as_of_date\\n"
+            "Groww Mutual Funds,mutual_fund,groww,mutual_fund,Example Flexi Cap Fund,INF000000000,,INR,125.50,82.40,2026-11-03\\n"
+        )
+        st.download_button("Download Groww mutual-fund CSV template", data=groww_mf_template,
+            file_name="alphafund_groww_mutual_funds_template.csv", mime="text/csv")
+        groww_mf_upload = st.file_uploader("Upload Groww mutual-fund CSV", type=["csv"], key="groww_mf_csv_upload")
+        if groww_mf_upload is not None:
+            try:
+                groww_mf_preview, groww_mf_checksum = validate_holdings_csv(groww_mf_upload.getvalue())
+                groww_mf_preview["account_name"] = "Groww Mutual Funds"
+                groww_mf_preview["account_type"] = "mutual_fund"
+                groww_mf_preview["provider"] = "groww"
+                groww_mf_preview["asset_type"] = "mutual_fund"
+                st.success(f"Validated {len(groww_mf_preview)} Groww mutual-fund holdings. Review before importing.")
+                st.dataframe(groww_mf_preview, use_container_width=True, hide_index=True)
+                if st.button("Import Groww mutual funds", type="primary", key="import_groww_mf"):
+                    result = portfolio.import_holdings(groww_mf_preview.to_dict(orient="records"), groww_mf_upload.name, groww_mf_checksum)
+                    if result["duplicate_file"]:
+                        st.warning("This exact Groww file was already imported. No rows were added.")
+                    else:
+                        st.success(f"Groww mutual funds added: {result['inserted']}; duplicate snapshots skipped: {result['skipped']}.")
+                    st.rerun()
+            except Exception as exc:
+                st.error(f"Groww mutual-fund CSV validation failed: {exc}")
+        st.info("After import, these funds appear in Portfolio → Holdings and are available to Ask AlphaFund. Add dated NAV observations under Import valuations to calculate current value and unrealised P&L.")
+
     with holdings_tab:
         current_holdings = portfolio.list_holdings()
         if current_holdings:
@@ -385,7 +415,9 @@ elif page == "Portfolio":
                 else:
                     st.info("No account-level cost basis available.")
             st.markdown("**Saved holdings and data quality**")
-            st.dataframe(saved_frame, use_container_width=True, hide_index=True)
+            display_holdings = saved_frame.copy()
+            display_holdings = display_holdings.rename(columns={"channel": "Channel", "source_file": "Source file"})
+            st.dataframe(display_holdings, use_container_width=True, hide_index=True)
             st.caption("Performance, unrealised P&L, sector exposure and risk metrics require dated market valuations and/or transaction history. They are not estimated from purchase cost.")
         else:
             st.info("No consolidated holdings yet. Add a holding manually or import the CSV template.")
