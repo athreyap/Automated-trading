@@ -205,7 +205,6 @@ elif page == "Discover":
     st.subheader("Research coverage")
     st.write("Equities: historical prices and technical indicators are available above. Mutual funds: AMFI NAV integration is the next data-source milestone. Bonds, PMS and AIF: use the portfolio import tools until dedicated market/manager feeds are connected.")
 
-elif page == "Portfolio":
     symbol_input = st.text_input("NSE symbol", value="RELIANCE", help="Enter a ticker such as RELIANCE, TCS, INFY or SBIN.")
     period = st.selectbox("History", ["3mo", "6mo", "1y", "2y", "5y"], index=1)
     
@@ -265,6 +264,8 @@ elif page == "Portfolio":
         st.dataframe(pd.DataFrame(trades, columns=["Timestamp (UTC)", "Symbol", "Side", "Quantity", "Price", "Notional"]), use_container_width=True)
     else:
         st.info("No paper trades recorded yet.")
+
+elif page == "Portfolio":
     st.divider()
     st.header("Consolidated portfolio")
     manual_tab, csv_tab, holdings_tab, transactions_tab, valuations_tab, performance_tab = st.tabs(["Add holding", "Import holdings", "Holdings", "Import transactions", "Import valuations", "Performance & P&L"])
@@ -443,6 +444,7 @@ elif page == "Portfolio":
             else:
                 st.info("No portfolio history chart yet. Import total market_value observations for each position and date.")
             if saved_transactions:
+
 
 elif page == "AI Chat":
                     terminal_value=total_market_value if complete_value_coverage else None,
