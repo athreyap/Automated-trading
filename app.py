@@ -324,16 +324,23 @@ elif page == "Portfolio":
                     sync_holdings, sync_positions = GrowwReadOnlyClient(sync_token).get_portfolio()
                     st.session_state["groww_holdings"] = sync_holdings
                     st.session_state["groww_positions"] = sync_positions
+                    sync_result = portfolio.sync_groww_holdings(sync_holdings, as_of_date=pd.Timestamp.now(tz="Asia/Kolkata").date())
                     st.session_state["groww_refreshed"] = pd.Timestamp.now(tz="Asia/Kolkata").strftime("%d %b %Y, %I:%M:%S %p IST")
                     st.session_state["groww_loaded_for_chat"] = True
                     st.session_state.pop("groww_chat_error", None)
-                    st.success(f"Groww synced: {len(sync_holdings)} equity holdings and {len(sync_positions)} CASH positions.")
+                    st.success(
+                        f"Groww synced and saved: {len(sync_holdings)} broker holdings fetched; "
+                        f"{sync_result['inserted']} new, {sync_result['updated']} updated, "
+                        f"{sync_result['skipped']} skipped. {len(sync_positions)} CASH positions remain session-only."
+                    )
+                    st.rerun()
                 except GrowwAPIError as exc:
                     st.error(f"Groww sync failed: {exc}")
     with status_col:
         if gw_connected:
             st.success("Groww API credentials configured · read-only connection")
-            st.caption("Last sync: " + st.session_state.get("groww_refreshed", "Not synced this session"))
+            persisted_sync = portfolio.get_last_groww_sync()
+            st.caption("Last saved sync: " + (pd.Timestamp(persisted_sync).strftime("%d %b %Y, %I:%M %p") if persisted_sync else "Never"))
         else:
             st.warning("Groww is not connected. Add GROWW_ACCESS_TOKEN or GROWW_API_KEY + GROWW_API_SECRET in Streamlit Secrets.")
     groww_mf_count = sum(1 for row in portfolio.list_holdings() if str(row.get("provider", "")).lower() == "groww" and str(row.get("asset_type", "")).lower() == "mutual_fund")
@@ -606,7 +613,9 @@ elif page == "AI Chat":
         holdings=chat_holdings,
         valuations=chat_valuations,
         transactions=chat_transactions,
-        groww_holdings=st.session_state.get("groww_holdings", []),
+        # Groww Demat holdings are persisted in saved_holdings during sync;
+        # do not also pass the live copy or the chatbot would double-count them.
+        groww_holdings=[],
     )
     if "alphafund_chat" not in st.session_state:
         st.session_state["alphafund_chat"] = [{
