@@ -201,6 +201,100 @@ class PortfolioStore:
             session.flush()
             return item.id
 
+    def sync_groww_holdings(self, records: list[dict], as_of_date=None) -> dict:
+        """Persist a Groww Demat snapshot; update same-day rows and retain dated history."""
+        from datetime import date
+        from sqlalchemy import and_
+
+        snapshot_date = as_of_date or date.today()
+        self.initialize()
+        inserted = updated = skipped = 0
+        with self.Session.begin() as session:
+            account = session.scalar(select(Account).where(and_(
+                Account.name == "Groww Demat",
+                Account.account_type == "broker",
+                Account.provider == "groww")))
+            if account is None:
+                account = Account(name="Groww Demat", account_type="broker",
+                                  provider="groww", currency="INR")
+                session.add(account)
+                session.flush()
+
+            batch = ImportBatch(source_type="groww", filename="Groww API sync",
+                                as_of_date=snapshot_date, row_count=len(records),
+                                status="syncing", notes="Read-only Groww Demat holdings snapshot.")
+            session.add(batch)
+            session.flush()
+
+            for row in records:
+                if not isinstance(row, dict):
+                    skipped += 1
+                    continue
+                symbol = str(row.get("trading_symbol") or row.get("tradingSymbol") or "").strip()
+                isin = str(row.get("isin") or row.get("ISIN") or "").strip()
+                exchange = str(row.get("exchange") or "").strip().upper() or None
+                identifier = isin or (f"{exchange}:{symbol}" if exchange and symbol else symbol)
+                if not identifier:
+                    skipped += 1
+                    continue
+                name = str(row.get("company_name") or row.get("companyName") or
+                           row.get("name") or symbol or identifier).strip()
+                try:
+                    quantity = float(row.get("quantity") or 0)
+                    average = row.get("average_price", row.get("averagePrice",
+                                  row.get("average_cost", row.get("averageCost"))))
+                    average_cost = float(average) if average not in (None, "") else None
+                except (TypeError, ValueError):
+                    skipped += 1
+                    continue
+                if quantity < 0 or (average_cost is not None and average_cost < 0):
+                    skipped += 1
+                    continue
+
+                instrument = session.scalar(select(Instrument).where(and_(
+                    Instrument.instrument_type == "equity",
+                    Instrument.identifier == identifier.upper())))
+                if instrument is None:
+                    instrument = Instrument(instrument_type="equity", name=name,
+                        identifier=identifier.upper(), currency="INR", exchange=exchange,
+                        metadata_json={"trading_symbol": symbol, "isin": isin, "source": "Groww API"})
+                    session.add(instrument)
+                    session.flush()
+                else:
+                    instrument.name = name or instrument.name
+                    instrument.exchange = exchange or instrument.exchange
+
+                existing = session.scalar(select(Holding).where(and_(
+                    Holding.account_id == account.id,
+                    Holding.instrument_id == instrument.id,
+                    Holding.as_of_date == snapshot_date)))
+                if existing:
+                    existing.quantity = quantity
+                    existing.average_cost = average_cost
+                    existing.source = "Groww API"
+                    existing.source_batch_id = batch.id
+                    updated += 1
+                else:
+                    session.add(Holding(account_id=account.id, instrument_id=instrument.id,
+                        quantity=quantity, average_cost=average_cost,
+                        as_of_date=snapshot_date, source_batch_id=batch.id, source="Groww API"))
+                    inserted += 1
+
+            batch.status = "completed"
+            batch.notes = f"Groww API snapshot: {inserted} inserted, {updated} updated, {skipped} skipped."
+        return {"inserted": inserted, "updated": updated, "skipped": skipped,
+                "as_of_date": snapshot_date.isoformat()}
+
+    def get_last_groww_sync(self) -> str | None:
+        """Return the latest successful Groww snapshot timestamp in ISO format."""
+        self.initialize()
+        with self.Session() as session:
+            batch = session.scalar(select(ImportBatch).where(
+                ImportBatch.source_type == "groww",
+                ImportBatch.status == "completed"
+            ).order_by(ImportBatch.imported_at.desc()))
+            return batch.imported_at.isoformat() if batch and batch.imported_at else None
+
     def import_holdings(self, records: list[dict], filename: str, checksum: str) -> dict:
         """Import a validated holdings snapshot; skip previously imported files/rows."""
         from sqlalchemy import and_
@@ -411,5 +505,5 @@ class PortfolioStore:
                      "average_cost": h.average_cost, "as_of_date": h.as_of_date.isoformat(),
                      "source": h.source,
                      "channel": "Groww" if str(a.provider).strip().lower() == "groww" else (batch.filename if batch and batch.filename else h.source),
-                     "source_file": batch.filename if batch and batch.filename else None}
+                     "source_file": batch.filename if batch and batch.filename and batch.source_type != "groww" else None}
                     for h, a, i, batch in rows]
