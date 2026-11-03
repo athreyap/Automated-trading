@@ -159,3 +159,73 @@ if trades:
     st.dataframe(pd.DataFrame(trades, columns=["Timestamp (UTC)", "Symbol", "Side", "Quantity", "Price", "Notional"]), use_container_width=True)
 else:
     st.info("No paper trades recorded yet.")
+
+st.divider()
+st.header("Consolidated portfolio")
+from datetime import date
+from alphafund.storage import PortfolioStore
+from alphafund.imports import validate_holdings_csv
+
+@st.cache_resource
+def portfolio_store():
+    store = PortfolioStore()
+    store.initialize()
+    return store
+
+portfolio = portfolio_store()
+manual_tab, csv_tab, holdings_tab = st.tabs(["Add holding", "Import CSV", "Portfolio holdings"])
+
+with manual_tab:
+    with st.form("manual_holding"):
+        m1, m2, m3 = st.columns(3)
+        account_name = m1.text_input("Account name", placeholder="Groww Demat")
+        account_type = m2.selectbox("Account type", ["broker", "mutual_fund", "bond", "pms", "aif", "cash"])
+        provider = m3.text_input("Provider", value="manual")
+        m4, m5, m6 = st.columns(3)
+        asset_type = m4.selectbox("Asset type", ["equity", "etf", "mutual_fund", "bond", "pms", "aif", "cash"])
+        instrument_name = m5.text_input("Investment name")
+        identifier = m6.text_input("Identifier / ISIN / symbol")
+        m7, m8, m9 = st.columns(3)
+        holding_quantity = m7.number_input("Quantity / units", min_value=0.0, value=1.0, step=1.0)
+        average_cost = m8.number_input("Average cost per unit (₹)", min_value=0.0, value=0.0, step=1.0)
+        as_of_date = m9.date_input("Snapshot date", value=date.today())
+        manual_submit = st.form_submit_button("Save holding", type="primary")
+        if manual_submit:
+            try:
+                if not all(x.strip() for x in [account_name, provider, instrument_name, identifier]):
+                    raise ValueError("Account, provider, investment name and identifier are required.")
+                account_id = portfolio.add_account(account_name, account_type, provider)
+                instrument_id = portfolio.add_instrument(asset_type, instrument_name, identifier)
+                portfolio.add_holding(account_id, instrument_id, holding_quantity, as_of_date,
+                                       average_cost if average_cost > 0 else None)
+                st.success("Holding saved to the consolidated portfolio.")
+            except Exception as exc:
+                st.error(f"Could not save holding: {exc}")
+
+with csv_tab:
+    st.caption("Upload a CSV using the holdings template. The app validates the full file before importing.")
+    st.download_button("Download holdings CSV template",
+        data="account_name,account_type,provider,asset_type,instrument_name,identifier,exchange,currency,quantity,average_cost,as_of_date\nMy Broker Account,broker,manual,equity,Example Company,EXAMPLE,NSE,INR,10,125.50,2026-11-03\n",
+        file_name="alphafund_holdings_template.csv", mime="text/csv")
+    upload = st.file_uploader("Choose holdings CSV", type=["csv"], key="holdings_csv_upload")
+    if upload is not None:
+        try:
+            preview, checksum = validate_holdings_csv(upload.getvalue())
+            st.success(f"Validated {len(preview)} rows. Review the preview before importing.")
+            st.dataframe(preview, use_container_width=True, hide_index=True)
+            if st.button("Import validated holdings", type="primary"):
+                result = portfolio.import_holdings(preview.to_dict(orient="records"), upload.name, checksum)
+                if result["duplicate_file"]:
+                    st.warning("This exact CSV file was already imported. No rows were added.")
+                else:
+                    st.success(f"Import complete: {result['inserted']} added, {result['skipped']} existing snapshots skipped.")
+                st.rerun()
+        except Exception as exc:
+            st.error(f"CSV validation failed: {exc}")
+
+with holdings_tab:
+    current_holdings = portfolio.list_holdings()
+    if current_holdings:
+        st.dataframe(pd.DataFrame(current_holdings), use_container_width=True, hide_index=True)
+    else:
+        st.info("No consolidated holdings yet. Add a holding manually or import the CSV template.")
