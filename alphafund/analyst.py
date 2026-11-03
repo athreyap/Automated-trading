@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 
 from alphafund.analytics import holdings_frame, valuation_enriched_holdings
-from alphafund.ai_providers import AIProviderError, ollama_chat, openai_chat
+from alphafund.ai_providers import AIProviderError, huggingface_chat, ollama_chat, openai_chat
 
 
 def current_positions(holdings: list[dict]) -> pd.DataFrame:
@@ -81,12 +81,14 @@ def review_fingerprint(holdings: list[dict], valuations: list[dict],
 def ai_interpretation(review: dict, api_key: str = "", model: str = "gpt-4o-mini",
                       provider: str = "ollama", ollama_model: str = "qwen2.5:7b",
                       ollama_base_url: str = "http://localhost:11434",
-                      allow_cloud_fallback: bool = False) -> str:
+                      allow_cloud_fallback: bool = False, huggingface_token: str = "",
+                      huggingface_model: str = "openai/gpt-oss-120b:cheapest",
+                      cloud_data_sharing: bool = False) -> str:
     if review.get("status") == "empty":
         return review["message"]
     findings = "\n".join(f"- {item}" for item in review.get("findings", []))
-    if provider not in {"ollama", "openai"}:
-        return "Unsupported AI provider. Choose 'ollama' or 'openai'."
+    if provider not in {"ollama", "openai", "huggingface"}:
+        return "Unsupported AI provider. Choose 'huggingface', 'ollama' or 'openai'."
     system = (
         "You are AlphaFund's investment research analyst. Interpret only the supplied "
         "verified portfolio metrics. Do not invent market data, benchmark returns, prices, "
@@ -100,6 +102,15 @@ def ai_interpretation(review: dict, api_key: str = "", model: str = "gpt-4o-mini
         {"role": "system", "content": system},
         {"role": "user", "content": json.dumps(review, default=str, ensure_ascii=False)},
     ]
+    if provider == "huggingface":
+        if not cloud_data_sharing:
+            return ("**Cloud AI is not enabled for portfolio data.** Set "
+                    "ALPHAFUND_CLOUD_DATA_SHARING=true only after reviewing the provider's data policy. "
+                    "No portfolio metrics were sent.\n\n" + findings)
+        try:
+            return huggingface_chat(messages, api_token=huggingface_token, model=huggingface_model)
+        except AIProviderError as exc:
+            return f"**Managed AI unavailable.** {exc}\n\nDeterministic findings:\n{findings}"
     if provider == "ollama":
         try:
             return ollama_chat(messages, model=ollama_model, base_url=ollama_base_url)
