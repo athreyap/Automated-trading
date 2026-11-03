@@ -148,9 +148,10 @@ if page == "Home":
                 quantity = pd.to_numeric(hdf.get("quantity", pd.Series(0, index=hdf.index)), errors="coerce").fillna(0)
                 average_price = pd.to_numeric(hdf.get("average_price", pd.Series(0, index=hdf.index)), errors="coerce").fillna(0)
                 hdf["invested_value"] = quantity * average_price
+                hdf["channel"] = "Groww"
                 st.metric("Holdings cost value", f"₹{hdf['invested_value'].sum():,.2f}")
-                columns = [col for col in ["trading_symbol", "quantity", "average_price", "invested_value", "isin"] if col in hdf.columns]
-                st.dataframe(hdf[columns], use_container_width=True, hide_index=True)
+                columns = [col for col in ["trading_symbol", "quantity", "average_price", "invested_value", "isin", "channel"] if col in hdf.columns]
+                st.dataframe(hdf[columns].rename(columns={"channel": "Channel"}), use_container_width=True, hide_index=True)
     
                 st.caption("Cost value = quantity × average purchase price. This is not current market value or unrealised P&L.")
                 st.markdown("#### Groww analytics")
