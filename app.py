@@ -675,7 +675,7 @@ elif page == "AI Chat":
         chat_reply = answer_portfolio_question(
             chat_question, chat_context,
             api_key=get_secret("HF_TOKEN") if (get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").lower() == "huggingface" else get_secret("OPENAI_API_KEY"),
-            model=get_secret("HUGGINGFACE_MODEL") or "openai/gpt-oss-120b:cheapest",
+            model=(get_secret("HUGGINGFACE_MODEL") or "openai/gpt-oss-120b:cheapest") if (get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").lower() == "huggingface" else (get_secret("OPENAI_MODEL") or settings.openai_model),
             provider=(get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").lower(),
             cloud_data_sharing=get_secret("ALPHAFUND_CLOUD_DATA_SHARING").lower() == "true",
             history=st.session_state["alphafund_chat"][:-1],
