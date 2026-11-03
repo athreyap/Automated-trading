@@ -360,8 +360,8 @@ elif page == "Portfolio":
         st.markdown("#### Import Groww mutual-fund holdings")
         st.caption("Groww's documented Trading API does not expose mutual-fund folio holdings. Export/download your Groww mutual-fund holdings or statement as CSV, map it to this template, and import it here. Imported records are stored in the consolidated portfolio and included in AI Chat.")
         groww_mf_template = (
-            "account_name,account_type,provider,asset_type,instrument_name,identifier,exchange,currency,quantity,average_cost,as_of_date\\n"
-            "Groww Mutual Funds,mutual_fund,groww,mutual_fund,Example Flexi Cap Fund,INF000000000,,INR,125.50,82.40,2026-11-03\\n"
+            "account_name,account_type,provider,asset_type,instrument_name,identifier,exchange,currency,quantity,average_cost,as_of_date\n"
+            "Groww Mutual Funds,mutual_fund,groww,mutual_fund,Example Flexi Cap Fund,INF000000000,,INR,125.50,82.40,2026-11-03\n"
         )
         st.download_button("Download Groww mutual-fund CSV template", data=groww_mf_template,
             file_name="alphafund_groww_mutual_funds_template.csv", mime="text/csv")
