@@ -97,9 +97,12 @@ def validate_transactions_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]
     if "external_id" not in frame:
         frame["external_id"] = None
     else:
-        frame["external_id"] = frame["external_id"].where(frame["external_id"].notna(), None)
+        frame["external_id"] = frame["external_id"].astype(object).where(frame["external_id"].notna(), None)
+        frame["external_id"] = frame["external_id"].apply(lambda value: None if value is None or str(value).strip() == "" else str(value).strip())
     if "notes" not in frame:
         frame["notes"] = None
+    else:
+        frame["notes"] = frame["notes"].where(frame["notes"].notna(), None)
     _dates(frame, "transaction_date")
     if frame["external_id"].dropna().duplicated().any():
         raise ValueError("Duplicate external_id values in transaction CSV.")
@@ -118,6 +121,8 @@ def validate_valuations_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]:
         raise ValueError("value must contain valid non-negative numbers.")
     if "provider" not in frame:
         frame["provider"] = "manual"
+    if "account_type" not in frame:
+        frame["account_type"] = frame["asset_type"].map({"mutual_fund": "mutual_fund", "bond": "bond", "pms": "pms", "aif": "aif", "cash": "cash"}).fillna("broker")
     frame["provider"] = frame["provider"].fillna("manual").astype(str).str.strip()
     if "currency" not in frame:
         frame["currency"] = "INR"
