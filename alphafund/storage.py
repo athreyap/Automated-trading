@@ -190,6 +190,60 @@ class PortfolioStore:
             session.flush()
             return item.id
 
+    def import_holdings(self, records: list[dict], filename: str, checksum: str) -> dict:
+        """Import a validated holdings snapshot; skip previously imported files/rows."""
+        from sqlalchemy import and_
+
+        if not records:
+            raise ValueError("There are no holding records to import.")
+        self.initialize()
+        with self.Session.begin() as session:
+            existing_batch = session.scalar(select(ImportBatch).where(ImportBatch.checksum == checksum))
+            if existing_batch:
+                return {"batch_id": existing_batch.id, "inserted": 0, "skipped": len(records),
+                        "duplicate_file": True}
+            batch = ImportBatch(source_type="csv", filename=filename, checksum=checksum,
+                                row_count=len(records), status="importing")
+            session.add(batch)
+            session.flush()
+            inserted = skipped = 0
+            for row in records:
+                account = session.scalar(select(Account).where(and_(
+                    Account.name == row["account_name"],
+                    Account.account_type == row["account_type"].lower(),
+                    Account.provider == row["provider"])))
+                if account is None:
+                    account = Account(name=row["account_name"], account_type=row["account_type"].lower(),
+                                      provider=row["provider"], currency=row["currency"])
+                    session.add(account)
+                    session.flush()
+                instrument = session.scalar(select(Instrument).where(and_(
+                    Instrument.instrument_type == row["asset_type"].lower(),
+                    Instrument.identifier == row["identifier"].upper())))
+                if instrument is None:
+                    instrument = Instrument(instrument_type=row["asset_type"].lower(),
+                                             name=row["instrument_name"],
+                                             identifier=row["identifier"].upper(),
+                                             exchange=row.get("exchange"), currency=row["currency"])
+                    session.add(instrument)
+                    session.flush()
+                duplicate = session.scalar(select(Holding.id).where(and_(
+                    Holding.account_id == account.id, Holding.instrument_id == instrument.id,
+                    Holding.as_of_date == row["as_of_date"])))
+                if duplicate:
+                    skipped += 1
+                    continue
+                cost = row.get("average_cost")
+                session.add(Holding(account_id=account.id, instrument_id=instrument.id,
+                                    quantity=float(row["quantity"]),
+                                    average_cost=float(cost) if cost is not None else None,
+                                    as_of_date=row["as_of_date"], source_batch_id=batch.id, source="csv"))
+                inserted += 1
+            batch.status = "completed"
+            batch.notes = f"Inserted {inserted}; skipped existing snapshots {skipped}."
+            return {"batch_id": batch.id, "inserted": inserted, "skipped": skipped,
+                    "duplicate_file": False}
+
     def list_accounts(self) -> list[dict]:
         self.initialize()
         with self.Session() as session:
