@@ -450,7 +450,7 @@ elif page == "Portfolio":
                                              saved_transactions_for_review)
             if st.session_state.get("portfolio_review_fingerprint") != fingerprint:
                 with st.spinner("AlphaFund is reviewing your portfolio…"):
-                     ai_provider = (get_secret("ALPHAFUND_AI_PROVIDER") or "ollama").lower()
+                    ai_provider = (get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").lower()
                     st.session_state["portfolio_review_text"] = ai_interpretation(
                         review, api_key=get_secret("OPENAI_API_KEY"),
                         model=get_secret("OPENAI_MODEL") or settings.openai_model,
@@ -458,12 +458,15 @@ elif page == "Portfolio":
                         ollama_model=get_secret("OLLAMA_MODEL") or "qwen2.5:7b",
                         ollama_base_url=get_secret("OLLAMA_BASE_URL") or "http://localhost:11434",
                         allow_cloud_fallback=get_secret("OPENAI_FALLBACK_ENABLED").lower() == "true",
+                        huggingface_token=get_secret("HF_TOKEN"),
+                        huggingface_model=get_secret("HUGGINGFACE_MODEL") or "openai/gpt-oss-120b:cheapest",
+                        cloud_data_sharing=get_secret("ALPHAFUND_CLOUD_DATA_SHARING").lower() == "true",
                     )
                     st.session_state["portfolio_ai_provider_used"] = ai_provider
                     st.session_state["portfolio_review_fingerprint"] = fingerprint
             st.markdown("#### AlphaFund AI analyst")
             st.markdown(st.session_state.get("portfolio_review_text", "Portfolio review is being prepared."))
-            st.caption("Analysis refreshes automatically when holdings, valuations or transactions change. Financial metrics are deterministic. Provider: " + (get_secret("ALPHAFUND_AI_PROVIDER") or "ollama").upper() + ". Local Ollama keeps portfolio prompts on the configured Ollama host; cloud fallback is off unless explicitly enabled.")
+            st.caption("Analysis refreshes automatically when holdings, valuations or transactions change. Financial metrics are deterministic. Provider: " + (get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").upper() + ". Cloud portfolio-data sharing is opt-in via ALPHAFUND_CLOUD_DATA_SHARING.")
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Holding records", f"{summary['holding_count']:,}")
             k2.metric("Known recorded cost basis", f"₹{summary['cost_basis']:,.2f}")
@@ -623,7 +626,7 @@ elif page == "AI Chat":
     st.divider()
     st.markdown('<div class="af-eyebrow">AlphaFund intelligence</div>', unsafe_allow_html=True)
     st.header("Ask AlphaFund")
-    st.caption("Ask questions about your holdings, allocation, transactions, NAVs, valuations and investment research. Answers use the data available in this app.")
+    st.caption("Ask questions about your holdings, allocation, transactions, NAVs, valuations and investment research. Managed open-weight AI runs through Hugging Face when configured. Portfolio data is not sent to cloud AI unless ALPHAFUND_CLOUD_DATA_SHARING=true.")
     from alphafund.portfolio_chat import build_portfolio_context, answer_portfolio_question
     # Load Groww read-only data on first visit to Chat, so chat does not depend on a prior Home-page click.
     groww_credentials = (
@@ -671,8 +674,10 @@ elif page == "AI Chat":
         st.session_state["alphafund_chat"].append({"role": "user", "content": chat_question})
         chat_reply = answer_portfolio_question(
             chat_question, chat_context,
-            api_key=get_secret("OPENAI_API_KEY"),
-            model=get_secret("OPENAI_MODEL") or settings.openai_model,
+            api_key=get_secret("HF_TOKEN") if (get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").lower() == "huggingface" else get_secret("OPENAI_API_KEY"),
+            model=get_secret("HUGGINGFACE_MODEL") or "openai/gpt-oss-120b:cheapest",
+            provider=(get_secret("ALPHAFUND_AI_PROVIDER") or "huggingface").lower(),
+            cloud_data_sharing=get_secret("ALPHAFUND_CLOUD_DATA_SHARING").lower() == "true",
             history=st.session_state["alphafund_chat"][:-1],
         )
         st.session_state["alphafund_chat"].append({"role": "assistant", "content": chat_reply})
