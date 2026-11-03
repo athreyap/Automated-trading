@@ -60,6 +60,6 @@ def test_read_only_client_only_fetches_holdings_and_cash_positions(monkeypatch):
 
     monkeypatch.setattr(client.session, "get", fake_get)
     assert client.get_portfolio() == ([], [])
-    assert [call[0].rsplit("/", 1)[-1] for call in calls] == ["holdings/user", "positions/user"]
+    assert [call[0].removeprefix(client.BASE_URL + "/") for call in calls] == ["holdings/user", "positions/user"]
     assert calls[1][1]["params"] == {"segment": "CASH"}
     assert not hasattr(client, "place_order")
