@@ -1,10 +1,42 @@
 import streamlit as st
 import pandas as pd
+import hmac
+import os
 from alphafund.config import settings
 from alphafund.market_data import fetch_history, normalize_symbol
 from alphafund.strategy import add_indicators, latest_signal, backtest
 from alphafund.paper_broker import initialize_ledger, list_trades, record_paper_trade, paper_cash
 from alphafund.ai_explainer import explain_signal
+from alphafund.groww_client import GrowwReadOnlyClient, GrowwAPIError
+
+
+def get_secret(name: str) -> str:
+    value = os.getenv(name, "")
+    try:
+        value = value or str(st.secrets.get(name, ""))
+    except Exception:
+        pass
+    return value.strip()
+
+
+def require_app_login() -> None:
+    password = get_secret("APP_PASSWORD")
+    if not password:
+        st.error("Dashboard locked. Configure APP_PASSWORD in Streamlit Cloud secrets before publishing.")
+        st.stop()
+    if st.session_state.get("authenticated"):
+        return
+    st.title("AlphaFund AI — Sign in")
+    entered = st.text_input("Dashboard password", type="password")
+    if st.button("Sign in", type="primary"):
+        if hmac.compare_digest(entered, password):
+            st.session_state["authenticated"] = True
+            st.rerun()
+        st.error("Incorrect password.")
+    st.stop()
+
+
+require_app_login()
 
 st.set_page_config(page_title="AlphaFund AI V1", page_icon="📈", layout="wide")
 settings.validate()
@@ -20,7 +52,43 @@ with st.sidebar:
     st.metric("Strategy allocation", f"₹{settings.trading_allocation:,.2f}")
     st.metric("Protected reserve", f"₹{settings.protected_reserve:,.2f}")
     st.metric("Paper cash remaining", f"₹{paper_cash(settings.trading_allocation):,.2f}")
-    st.caption("Groww order placement is not implemented. No live trades can be sent.")
+    st.caption("Groww integration is read-only. No broker orders can be sent.")
+    if st.button("Sign out"):
+        st.session_state.pop("authenticated", None)
+        st.rerun()
+
+st.subheader("Groww portfolio — read only")
+groww_token = get_secret("GROWW_ACCESS_TOKEN")
+if not groww_token:
+    st.info("Add GROWW_ACCESS_TOKEN to Streamlit app secrets. Groww access tokens expire daily at 6:00 AM IST.")
+else:
+    if st.button("Refresh Groww portfolio"):
+        try:
+            holdings, positions = GrowwReadOnlyClient(groww_token).get_portfolio()
+            st.session_state["groww_holdings"] = holdings
+            st.session_state["groww_positions"] = positions
+            st.session_state["groww_refreshed"] = pd.Timestamp.now(tz="Asia/Kolkata").strftime("%d %b %Y, %I:%M:%S %p IST")
+        except GrowwAPIError as exc:
+            st.error(str(exc))
+    if "groww_holdings" in st.session_state:
+        st.caption(f"Last refreshed: {st.session_state.get('groww_refreshed', 'Unknown')}")
+        holdings = st.session_state["groww_holdings"]
+        positions = st.session_state["groww_positions"]
+        if holdings:
+            hdf = pd.DataFrame(holdings)
+            hdf["invested_value"] = pd.to_numeric(hdf["quantity"], errors="coerce").fillna(0) * pd.to_numeric(hdf["average_price"], errors="coerce").fillna(0)
+            st.metric("Holdings cost value", f"₹{hdf['invested_value'].sum():,.2f}")
+            st.dataframe(hdf[[c for c in ["trading_symbol", "quantity", "average_price", "invested_value", "isin"] if c in hdf.columns]], use_container_width=True, hide_index=True)
+            st.caption("Cost value = quantity × average purchase price. This is not current market value or unrealised P&L.")
+        else: st.info("Groww returned no equity holdings.")
+        if positions:
+            st.markdown("**Positions (CASH segment)**")
+            pdf = pd.DataFrame(positions)
+            cols = [c for c in ["trading_symbol", "product", "quantity", "net_price", "realised_pnl", "exchange"] if c in pdf.columns]
+            st.dataframe(pdf[cols], use_container_width=True, hide_index=True)
+        else: st.info("Groww returned no CASH positions.")
+    else: st.caption("Select Refresh to retrieve your holdings and CASH positions.")
+st.divider()
 
 symbol_input = st.text_input("NSE symbol", value="RELIANCE", help="Enter a ticker such as RELIANCE, TCS, INFY or SBIN.")
 period = st.selectbox("History", ["3mo", "6mo", "1y", "2y", "5y"], index=1)
