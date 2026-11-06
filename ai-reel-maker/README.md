@@ -6,12 +6,13 @@ A phone-friendly, manual-trigger reel creator with Google Photos Picker integrat
 - Streamlit web interface.
 - Google Photos Picker OAuth; the user explicitly selects media.
 - Upload photos and videos from a phone or computer.
+- OpenCV visual quality scoring to select a sharper, better-exposed moment from each video.
 - Automatic vertical 9:16 conversion and clip assembly with FFmpeg.
 - Optional user-supplied music.
 - MP4 preview and download.
 
 ## Current limitations
-This first release is an automatic renderer, not yet a semantic AI editor. It follows the selected media order, takes a centered segment from each video, holds photos for the configured duration, and center-crops to vertical format. It does not yet rank scenes semantically, detect beats, generate subtitles, or perform face-aware reframing. Those capabilities are planned for later milestones and are not represented as implemented.
+The current release uses open-source computer-vision heuristics (OpenCV) for visual quality scoring. It is not a semantic AI editor: it does not understand scene meaning, identify a travel storyline, detect music beats, generate speech subtitles, or perform face-aware reframing. It preserves the user's selected media order and selects a visually stronger contiguous moment within each video.
 
 ## Run locally
 1. Install Python 3.11 and FFmpeg.
