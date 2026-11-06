@@ -44,13 +44,16 @@ The application requests only the Google Photos Picker scope: photospicker.media
 - MP4 container
 
 ## 5. Free-tier caveats
-Streamlit Community Cloud is a limited free host and may sleep when inactive. Runtime files are temporary and large video renders can hit CPU, memory, or execution limits. This first release deliberately avoids loading large model weights on the cloud host.
+Streamlit Community Cloud is a limited free host and may sleep when inactive. Runtime files are temporary and large video renders can hit CPU, memory, or execution limits. This first release uses lightweight OpenCV CPU analysis rather than loading large model weights.
 
-## 6. Planned AI milestones
-- Visual quality scoring and scene-change detection.
-- Optional lightweight open-source scene classification.
+## 6. Implemented and planned editing intelligence
+Implemented:
+- OpenCV frame sampling and visual quality scoring.
+- Selection of a sharper, better-exposed contiguous moment from each video.
+- Automatic assembly and vertical export.
+
+Planned:
+- Semantic scene understanding and storyline generation.
 - Whisper speech transcription and subtitle burn-in.
 - Music beat detection and beat-aligned cut suggestions.
 - Subject-aware reframing instead of center crop.
-
-These are future milestones, not features of the first release.
