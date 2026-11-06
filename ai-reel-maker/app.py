@@ -22,7 +22,7 @@ photos_tab, upload_tab = st.tabs(["Google Photos", "Upload from device"])
 media_paths = []
 
 with photos_tab:
-    st.write("Google Photos access is selection-based. You choose which items to share through Google's Picker.")
+    st.write("Connect Google Photos, then select the photos and videos you want to use.")
     cfg = st.secrets.get("google", {}) if hasattr(st, "secrets") else {}
     configured = all(cfg.get(k) for k in ("client_id", "client_secret", "redirect_uri"))
 
@@ -34,6 +34,7 @@ with photos_tab:
         st.session_state.setdefault("google_picker_session", None)
         st.session_state.setdefault("google_selected_items", [])
         st.session_state.setdefault("google_download_paths", [])
+        st.session_state.setdefault("google_album_name_applied", "")
 
         if "code" in st.query_params and st.session_state.get("google_oauth_state"):
             try:
@@ -49,6 +50,27 @@ with photos_tab:
             st.session_state.google_oauth_state = state
             st.link_button("Connect Google Photos", auth_url, use_container_width=True)
         else:
+            album_name = st.text_input(
+                "Google Photos album name (optional)",
+                key="google_album_name",
+                placeholder="e.g. Meghalaya Trip",
+                help="Use this as the album you intend to select from. Google Photos does not expose album-name search through the current Picker API.",
+            ).strip()
+
+            if album_name != st.session_state.google_album_name_applied:
+                st.session_state.google_picker_session = None
+                st.session_state.google_selected_items = []
+                st.session_state.google_download_paths = []
+                st.session_state.google_album_name_applied = album_name
+
+            if album_name:
+                st.info(
+                    f'Album target: "{album_name}". Open the Google Photos Picker, navigate to this album if it is available in the picker, and select its photos/videos. '
+                    "The Picker API returns selected media items but does not return album membership, so the app cannot automatically search or verify the album."
+                )
+            else:
+                st.caption("You can leave the album name blank and select individual items in Google Photos.")
+
             if st.button("Create Google Photos selection"):
                 try:
                     st.session_state.google_picker_session = picker.create_session(st.session_state.google_credentials)
