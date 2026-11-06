@@ -3,6 +3,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from .analysis import best_video_window, photo_quality
+
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
 
@@ -63,15 +65,18 @@ def render_reel(
         )
 
         if is_image:
+            quality_score = photo_quality(source)
             command = [
                 "ffmpeg", "-y", "-loop", "1", "-i", str(source),
                 "-t", str(segment_seconds), "-vf", video_filter,
                 "-an", "-c:v", "libx264", "-preset", "veryfast",
                 "-crf", "23", "-pix_fmt", "yuv420p", str(segment),
             ]
+            start = 0.0
         else:
             source_duration = media_duration(source)
-            start = max(0, (source_duration - segment_seconds) / 2)
+            start, quality_score = best_video_window(source, segment_seconds)
+            start = min(start, max(0.0, source_duration - segment_seconds))
             command = [
                 "ffmpeg", "-y", "-ss", str(start), "-i", str(source),
                 "-t", str(segment_seconds), "-vf", video_filter,
@@ -87,6 +92,8 @@ def render_reel(
             "filename": source.name,
             "seconds": round(segment_seconds, 2),
             "kind": "photo" if is_image else "video",
+            "source_start_seconds": round(start, 2),
+            "visual_quality_score": round(float(quality_score), 3),
         })
 
     if not segments:
@@ -132,9 +139,9 @@ def render_reel(
         "video_codec": "H.264",
         "audio": "music track" if music_path else "none",
         "clips_used": used,
-        "editing_mode": "automatic assembly in selected order",
+        "editing_mode": "OpenCV quality-scored moment selection + automatic assembly in selected order",
         "limitations": [
-            "No semantic scene ranking yet",
+            "Visual scoring uses open-source computer-vision heuristics, not semantic scene understanding",
             "Landscape footage uses a centered crop",
             "No beat detection or speech subtitles yet",
         ],
