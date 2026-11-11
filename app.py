@@ -6,7 +6,7 @@ import re
 from alphafund.config import settings
 from alphafund.market_data import fetch_history, normalize_symbol
 from alphafund.strategy import add_indicators, latest_signal, backtest
-from alphafund.paper_broker import initialize_ledger, list_trades, record_paper_trade, paper_cash
+from alphafund.paper_broker import initialize_ledger, list_trades, record_paper_trade, paper_cash, paper_positions
 from alphafund.ai_explainer import explain_signal
 from alphafund.groww_client import GrowwReadOnlyClient, GrowwAPIError, generate_access_token
 
@@ -281,26 +281,36 @@ elif page == "Discover":
         st.caption("Backtest is a simplified moving-average regime test. It excludes brokerage, taxes, slippage and corporate-action edge cases.")
     st.divider()
     st.subheader("Paper trade entry")
-    st.caption("V1 records BUY entries only; full holdings and SELL accounting are not yet implemented.")
+    st.caption("Long-only paper ledger with position-aware BUY/SELL checks, weighted-average cost basis and configurable estimated fees. No broker orders are sent.")
     with st.form("paper_trade"):
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         trade_symbol = col1.text_input("Symbol", value=symbol_input.upper())
-        quantity = col2.number_input("Quantity", min_value=1, max_value=100000, value=1, step=1)
-        price = col3.number_input("Entry price (₹)", min_value=0.01, value=100.0, step=0.05)
-        submitted = st.form_submit_button("Record paper BUY")
+        trade_side = col2.selectbox("Side", ["BUY", "SELL"])
+        quantity = col3.number_input("Quantity", min_value=1, max_value=100000, value=1, step=1)
+        price = col4.number_input("Execution price (₹)", min_value=0.01, value=100.0, step=0.05)
+        fee_bps = st.number_input("Estimated fees (basis points)", min_value=0.0, max_value=1000.0, value=0.0, step=1.0)
+        submitted = st.form_submit_button("Record paper trade")
         if submitted:
             try:
-                amount = record_paper_trade(trade_symbol, "BUY", int(quantity), float(price),
-                                            paper_cash(settings.trading_allocation),
-                                            settings.trading_allocation)
-                st.success(f"Recorded paper BUY for ₹{amount:,.2f}.")
+                trade_result = record_paper_trade(
+                    trade_symbol, trade_side, int(quantity), float(price),
+                    paper_cash(settings.trading_allocation), settings.trading_allocation,
+                    fee_bps=float(fee_bps))
+                st.success(f"Recorded paper {trade_side}: notional ₹{trade_result['notional']:,.2f}; estimated fees ₹{trade_result['fees']:,.2f}.")
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
+    p1, p2 = st.columns(2)
+    p1.metric("Paper cash available", f"₹{paper_cash(settings.trading_allocation):,.2f}")
+    open_paper_positions = paper_positions()
+    p2.metric("Open paper positions", str(len(open_paper_positions)))
+    if open_paper_positions:
+        st.markdown("**Paper positions · weighted-average cost**")
+        st.dataframe(pd.DataFrame(open_paper_positions), use_container_width=True, hide_index=True)
     st.subheader("Paper ledger")
     trades = list_trades()
     if trades:
-        st.dataframe(pd.DataFrame(trades, columns=["Timestamp (UTC)", "Symbol", "Side", "Quantity", "Price", "Notional"]), use_container_width=True)
+        st.dataframe(pd.DataFrame(trades, columns=["Timestamp (UTC)", "Symbol", "Side", "Quantity", "Price", "Notional", "Fees"]), use_container_width=True)
     else:
         st.info("No paper trades recorded yet.")
 
