@@ -117,7 +117,7 @@ def portfolio_store():
 portfolio = portfolio_store()
 
 # App-wide navigation
-page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "AI Chat"], horizontal=True,
+page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "Research", "AI Chat"], horizontal=True,
                 label_visibility="collapsed", key="main_navigation")
 
 if page == "Home":
@@ -688,4 +688,90 @@ elif page == "AI Chat":
         st.session_state["alphafund_chat"] = []
         st.rerun()
     st.caption(f"Context currently loaded: {len(chat_holdings)} saved holdings · {len(st.session_state.get('groww_holdings', []))} Groww holdings · {len(chat_transactions)} transactions · {len(chat_valuations)} valuations. Chat history is held in this Streamlit session.")
-    
+
+elif page == "Research":
+    from alphafund.market_research import (
+        MARKETS, fetch_market_history, add_research_indicators,
+        analyse_history, research_backtest, scan_symbols,
+    )
+    st.subheader("Multi-market equity research")
+    st.caption("Technical research for NSE, BSE and US-listed equities. Prices are indicative Yahoo Finance data; validate with your broker before acting.")
+    market_label = st.selectbox("Market", ["NSE", "BSE", "US"], index=0)
+    currency = MARKETS[market_label]["currency"]
+    symbol_input = st.text_input("Ticker symbol", value="RELIANCE" if market_label == "NSE" else ("500325" if market_label == "BSE" else "AAPL"),
+                                 help="Enter NSE symbol, BSE scrip code, or US ticker. Do not include exchange suffix unless it matches the selected market.")
+    period = st.selectbox("History window", ["6mo", "1y", "2y", "5y"], index=2)
+    if st.button("Analyse security", type="primary", key="multi_market_analyse"):
+        try:
+            with st.spinner("Loading market history and calculating indicators…"):
+                ticker, history = fetch_market_history(symbol_input, market_label, period=period)
+                enriched = add_research_indicators(history)
+                metrics = analyse_history(history)
+                st.session_state["research_result"] = {
+                    "ticker": ticker, "market": market_label, "currency": currency,
+                    "history": enriched, "metrics": metrics,
+                }
+        except Exception as exc:
+            st.error(f"Research could not be completed: {exc}")
+    result = st.session_state.get("research_result")
+    if result and result["market"] == market_label:
+        m = result["metrics"]
+        st.caption(f'{result["ticker"]} · Data through {m["as_of"]} · {m["observations"]:,} observations')
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Last close", f'{currency} {m["close"]:,.2f}')
+        c2.metric("Trend", m["trend"])
+        c3.metric("RSI (14)", f'{m["rsi"]:.1f}')
+        c4.metric("Technical score", f'{m["technical_score"]}/5')
+        st.caption("The technical score is a rule-based indicator summary, not a probability, target price or buy/sell recommendation.")
+        c5, c6, c7, c8 = st.columns(4)
+        c5.metric("1-month return", f'{m["return_1m_pct"]:.2f}%' if m["return_1m_pct"] is not None else "N/A")
+        c6.metric("3-month return", f'{m["return_3m_pct"]:.2f}%' if m["return_3m_pct"] is not None else "N/A")
+        c7.metric("Annualised volatility", f'{m["annualised_volatility_pct"]:.1f}%' if m["annualised_volatility_pct"] is not None else "N/A")
+        c8.metric("Historical max drawdown", f'{m["max_drawdown_pct"]:.1f}%')
+        hist = result["history"]
+        st.markdown("#### Price and trend")
+        chart_cols = [x for x in ["Close", "SMA_20", "SMA_50", "SMA_200"] if x in hist.columns and hist[x].notna().any()]
+        st.line_chart(hist[chart_cols].tail(260), use_container_width=True)
+        t1, t2, t3 = st.tabs(["Momentum", "Backtest", "Risk"])
+        with t1:
+            st.line_chart(hist[["RSI_14"]].tail(180), use_container_width=True)
+            st.line_chart(hist[["MACD", "MACD_SIGNAL"]].tail(180), use_container_width=True)
+            st.write({"MACD": round(m["macd"], 3), "MACD signal": round(m["macd_signal"], 3),
+                      "Momentum": m["momentum"], "ATR (14)": round(m["atr14"], 3) if m["atr14"] is not None else None})
+        with t2:
+            fee_bps = st.slider("Estimated transaction cost (basis points per position change)", 0, 50, 10, 1)
+            bt = research_backtest(hist, fee_bps=fee_bps)
+            b1, b2, b3 = st.columns(3)
+            b1.metric("Strategy return", f'{bt["strategy_return_pct"]:.2f}%')
+            b2.metric("Buy & hold", f'{bt["buy_hold_return_pct"]:.2f}%')
+            b3.metric("Strategy max drawdown", f'{bt["max_drawdown_pct"]:.2f}%')
+            st.line_chart(bt["equity_curve"], use_container_width=True)
+            st.caption(f'20/50-day long-only SMA regime · {bt["trade_entries"]} entries · {bt["trade_exits"]} exits · {fee_bps} bps estimated cost per position change. Historical simulation only; excludes taxes, market impact and dividends.')
+        with t3:
+            st.write({
+                "SMA 20": round(m["sma20"], 2), "SMA 50": round(m["sma50"], 2),
+                "SMA 200": round(m["sma200"], 2) if m["sma200"] is not None else "Not enough data",
+                "ATR 14": round(m["atr14"], 2) if m["atr14"] is not None else "N/A",
+                "Annualised volatility": m["annualised_volatility_pct"],
+                "Maximum historical drawdown": m["max_drawdown_pct"],
+            })
+            st.caption("Volatility and drawdown are calculated from the selected historical window. They are not forecasts.")
+    st.divider()
+    st.markdown("#### Multi-stock scanner")
+    st.caption("Scan a small watchlist (maximum 30 tickers) for comparable technical metrics.")
+    scan_market = st.selectbox("Scanner market", ["NSE", "BSE", "US"], key="scan_market")
+    scan_text = st.text_area("Symbols separated by commas or new lines", value="RELIANCE, TCS, INFY" if scan_market == "NSE" else ("500325, 532540" if scan_market == "BSE" else "AAPL, MSFT, NVDA"))
+    if st.button("Run watchlist scan", key="run_multi_market_scan"):
+        symbols = [x.strip() for x in scan_text.replace("\\n", ",").split(",") if x.strip()]
+        if len(symbols) > 30:
+            st.error("Please limit each scan to 30 symbols.")
+        elif not symbols:
+            st.error("Enter at least one ticker.")
+        else:
+            with st.spinner(f"Scanning {len(symbols)} {scan_market} symbols…"):
+                st.session_state["market_scan_results"] = scan_symbols(symbols, scan_market)
+                st.session_state["market_scan_market"] = scan_market
+    if st.session_state.get("market_scan_results") is not None and st.session_state.get("market_scan_market") == scan_market:
+        st.dataframe(st.session_state["market_scan_results"], use_container_width=True, hide_index=True)
+    st.warning("Data provider limitations: Yahoo Finance data may be delayed, incomplete or rate-limited. NSE/BSE ticker coverage must be checked symbol by symbol. Fundamental ratios, exchange filings, live quotes and news sentiment are not part of this first integration. No orders are sent.");
+
