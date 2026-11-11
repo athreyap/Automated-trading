@@ -1,4 +1,4 @@
-"""Validated CSV importers for holdings, transactions and valuation snapshots."""
+"""Validated CSV and Excel importers for portfolio records."""
 from __future__ import annotations
 
 import hashlib
@@ -7,11 +7,17 @@ from io import BytesIO
 import pandas as pd
 
 
-def _read_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]:
+def _read_csv(uploaded_bytes: bytes, filename: str | None = None) -> tuple[pd.DataFrame, str]:
     if not uploaded_bytes:
         raise ValueError("The uploaded file is empty.")
     checksum = hashlib.sha256(uploaded_bytes).hexdigest()
-    frame = pd.read_csv(BytesIO(uploaded_bytes))
+    suffix = (filename or "").lower().rsplit(".", 1)[-1] if "." in (filename or "") else "csv"
+    if suffix in {"xlsx", "xlsm"}:
+        frame = pd.read_excel(BytesIO(uploaded_bytes), engine="openpyxl")
+    elif suffix == "csv":
+        frame = pd.read_csv(BytesIO(uploaded_bytes))
+    else:
+        raise ValueError("Supported import formats are CSV and XLSX/XLSM workbooks.")
     frame.columns = [str(c).strip().lower() for c in frame.columns]
     if frame.empty:
         raise ValueError("The uploaded CSV contains no rows.")
@@ -37,8 +43,8 @@ def _dates(frame: pd.DataFrame, column: str) -> None:
         raise ValueError(f"{column} must contain valid dates in YYYY-MM-DD format.")
 
 
-def validate_holdings_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]:
-    frame, checksum = _read_csv(uploaded_bytes)
+def validate_holdings_csv(uploaded_bytes: bytes, filename: str | None = None) -> tuple[pd.DataFrame, str]:
+    frame, checksum = _read_csv(uploaded_bytes, filename)
     required = {"account_name", "account_type", "provider", "asset_type",
                 "instrument_name", "identifier", "quantity", "as_of_date"}
     _required(frame, required)
@@ -68,8 +74,8 @@ def validate_holdings_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]:
     return frame, checksum
 
 
-def validate_transactions_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]:
-    frame, checksum = _read_csv(uploaded_bytes)
+def validate_transactions_csv(uploaded_bytes: bytes, filename: str | None = None) -> tuple[pd.DataFrame, str]:
+    frame, checksum = _read_csv(uploaded_bytes, filename)
     required = {"account_name", "provider", "asset_type", "instrument_name", "identifier",
                 "transaction_type", "transaction_date", "amount"}
     _required(frame, required)
@@ -109,8 +115,8 @@ def validate_transactions_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]
     return frame, checksum
 
 
-def validate_valuations_csv(uploaded_bytes: bytes) -> tuple[pd.DataFrame, str]:
-    frame, checksum = _read_csv(uploaded_bytes)
+def validate_valuations_csv(uploaded_bytes: bytes, filename: str | None = None) -> tuple[pd.DataFrame, str]:
+    frame, checksum = _read_csv(uploaded_bytes, filename)
     required = {"account_name", "asset_type", "instrument_name", "identifier",
                 "valuation_date", "value", "observation_type", "source"}
     _required(frame, required)

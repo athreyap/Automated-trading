@@ -6,7 +6,7 @@ import re
 from alphafund.config import settings
 from alphafund.market_data import fetch_history, normalize_symbol
 from alphafund.strategy import add_indicators, latest_signal, backtest
-from alphafund.paper_broker import initialize_ledger, list_trades, record_paper_trade, paper_cash
+from alphafund.paper_broker import initialize_ledger, list_trades, record_paper_trade, paper_cash, paper_positions
 from alphafund.ai_explainer import explain_signal
 from alphafund.groww_client import GrowwReadOnlyClient, GrowwAPIError, generate_access_token
 
@@ -281,26 +281,36 @@ elif page == "Discover":
         st.caption("Backtest is a simplified moving-average regime test. It excludes brokerage, taxes, slippage and corporate-action edge cases.")
     st.divider()
     st.subheader("Paper trade entry")
-    st.caption("V1 records BUY entries only; full holdings and SELL accounting are not yet implemented.")
+    st.caption("Long-only paper ledger with position-aware BUY/SELL checks, weighted-average cost basis and configurable estimated fees. No broker orders are sent.")
     with st.form("paper_trade"):
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         trade_symbol = col1.text_input("Symbol", value=symbol_input.upper())
-        quantity = col2.number_input("Quantity", min_value=1, max_value=100000, value=1, step=1)
-        price = col3.number_input("Entry price (₹)", min_value=0.01, value=100.0, step=0.05)
-        submitted = st.form_submit_button("Record paper BUY")
+        trade_side = col2.selectbox("Side", ["BUY", "SELL"])
+        quantity = col3.number_input("Quantity", min_value=1, max_value=100000, value=1, step=1)
+        price = col4.number_input("Execution price (₹)", min_value=0.01, value=100.0, step=0.05)
+        fee_bps = st.number_input("Estimated fees (basis points)", min_value=0.0, max_value=1000.0, value=0.0, step=1.0)
+        submitted = st.form_submit_button("Record paper trade")
         if submitted:
             try:
-                amount = record_paper_trade(trade_symbol, "BUY", int(quantity), float(price),
-                                            paper_cash(settings.trading_allocation),
-                                            settings.trading_allocation)
-                st.success(f"Recorded paper BUY for ₹{amount:,.2f}.")
+                trade_result = record_paper_trade(
+                    trade_symbol, trade_side, int(quantity), float(price),
+                    paper_cash(settings.trading_allocation), settings.trading_allocation,
+                    fee_bps=float(fee_bps))
+                st.success(f"Recorded paper {trade_side}: notional ₹{trade_result['notional']:,.2f}; estimated fees ₹{trade_result['fees']:,.2f}.")
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
+    p1, p2 = st.columns(2)
+    p1.metric("Paper cash available", f"₹{paper_cash(settings.trading_allocation):,.2f}")
+    open_paper_positions = paper_positions()
+    p2.metric("Open paper positions", str(sum(1 for row in open_paper_positions if row["quantity"] > 0)))
+    if open_paper_positions:
+        st.markdown("**Paper positions · weighted-average cost**")
+        st.dataframe(pd.DataFrame(open_paper_positions), use_container_width=True, hide_index=True)
     st.subheader("Paper ledger")
     trades = list_trades()
     if trades:
-        st.dataframe(pd.DataFrame(trades, columns=["Timestamp (UTC)", "Symbol", "Side", "Quantity", "Price", "Notional"]), use_container_width=True)
+        st.dataframe(pd.DataFrame(trades, columns=["Timestamp (UTC)", "Symbol", "Side", "Quantity", "Price", "Notional", "Fees"]), use_container_width=True)
     else:
         st.info("No paper trades recorded yet.")
 
@@ -376,14 +386,14 @@ elif page == "Portfolio":
                     st.error(f"Could not save holding: {exc}")
     
     with csv_tab:
-        st.caption("Upload a CSV using the holdings template. The app validates the full file before importing.")
+        st.caption("Upload a CSV or XLSX workbook using the holdings template. The app validates the full file before importing.")
         st.download_button("Download holdings CSV template",
             data="account_name,account_type,provider,asset_type,instrument_name,identifier,exchange,currency,quantity,average_cost,as_of_date\nMy Broker Account,broker,manual,equity,Example Company,EXAMPLE,NSE,INR,10,125.50,2026-11-03\n",
             file_name="alphafund_holdings_template.csv", mime="text/csv")
-        upload = st.file_uploader("Choose holdings CSV", type=["csv"], key="holdings_csv_upload")
+        upload = st.file_uploader("Choose holdings CSV", type=["csv", "xlsx", "xlsm"], key="holdings_csv_upload")
         if upload is not None:
             try:
-                preview, checksum = validate_holdings_csv(upload.getvalue())
+                preview, checksum = validate_holdings_csv(upload.getvalue(), upload.name)
                 st.success(f"Validated {len(preview)} rows. Review the preview before importing.")
                 st.dataframe(preview, use_container_width=True, hide_index=True)
                 if st.button("Import validated holdings", type="primary"):
@@ -405,10 +415,10 @@ elif page == "Portfolio":
         )
         st.download_button("Download Groww mutual-fund CSV template", data=groww_mf_template,
             file_name="alphafund_groww_mutual_funds_template.csv", mime="text/csv")
-        groww_mf_upload = st.file_uploader("Upload Groww mutual-fund CSV", type=["csv"], key="groww_mf_csv_upload")
+        groww_mf_upload = st.file_uploader("Upload Groww mutual-fund CSV", type=["csv", "xlsx", "xlsm"], key="groww_mf_csv_upload")
         if groww_mf_upload is not None:
             try:
-                groww_mf_preview, groww_mf_checksum = validate_holdings_csv(groww_mf_upload.getvalue())
+                groww_mf_preview, groww_mf_checksum = validate_holdings_csv(groww_mf_upload.getvalue(), groww_mf_upload.name)
                 groww_mf_preview["account_name"] = "Groww Mutual Funds"
                 groww_mf_preview["account_type"] = "mutual_fund"
                 groww_mf_preview["provider"] = "groww"
@@ -526,10 +536,10 @@ elif page == "Portfolio":
             data="account_name,account_type,provider,asset_type,instrument_name,identifier,transaction_type,transaction_date,quantity,price,amount,currency,external_id,notes\nGroww Demat,broker,groww,equity,Reliance,RELIANCE,BUY,2026-10-01,2,1200,2400,INR,TXN-001,Example only\n",
             file_name="alphafund_transactions_template.csv", mime="text/csv")
         from alphafund.imports import validate_transactions_csv
-        tx_upload = st.file_uploader("Upload transactions CSV", type=["csv"], key="transactions_csv_upload")
+        tx_upload = st.file_uploader("Upload transactions CSV or XLSX workbook", type=["csv", "xlsx", "xlsm"], key="transactions_csv_upload")
         if tx_upload is not None:
             try:
-                tx_preview, tx_checksum = validate_transactions_csv(tx_upload.getvalue())
+                tx_preview, tx_checksum = validate_transactions_csv(tx_upload.getvalue(), tx_upload.name)
                 st.success(f"Validated {len(tx_preview)} transactions. Review before importing.")
                 st.dataframe(tx_preview, use_container_width=True, hide_index=True)
                 if st.button("Import transactions", type="primary"):
@@ -552,10 +562,10 @@ elif page == "Portfolio":
             data="account_name,provider,asset_type,instrument_name,identifier,valuation_date,value,observation_type,source,quality,currency\nGroww Demat,groww,equity,Reliance,RELIANCE,2026-11-03,2500,price,Yahoo Finance,indicative,INR\n",
             file_name="alphafund_valuations_template.csv", mime="text/csv")
         from alphafund.imports import validate_valuations_csv
-        val_upload = st.file_uploader("Upload valuations CSV", type=["csv"], key="valuations_csv_upload")
+        val_upload = st.file_uploader("Upload valuations CSV or XLSX workbook", type=["csv", "xlsx", "xlsm"], key="valuations_csv_upload")
         if val_upload is not None:
             try:
-                val_preview, val_checksum = validate_valuations_csv(val_upload.getvalue())
+                val_preview, val_checksum = validate_valuations_csv(val_upload.getvalue(), val_upload.name)
                 st.success(f"Validated {len(val_preview)} valuation observations. Review before importing.")
                 st.dataframe(val_preview, use_container_width=True, hide_index=True)
                 if st.button("Import valuations", type="primary"):
@@ -1005,5 +1015,5 @@ elif page == "Research":
                            st.session_state["market_scan_results"].to_csv(index=False),
                            file_name=f"alphafund_{scan_market.lower()}_watchlist_scan.csv",
                            mime="text/csv")
-    st.warning("Data provider limitations: Yahoo Finance data may be delayed, incomplete or rate-limited. NSE/BSE ticker coverage must be checked symbol by symbol. Fundamental ratios, exchange filings, live quotes and news sentiment are not part of this first integration. No orders are sent.");
+    st.warning("Data provider limitations: Yahoo Finance data may be delayed, incomplete or rate-limited. NSE/BSE ticker coverage must be checked symbol by symbol. Official exchange filings, consolidated live quotes and validated news sentiment are not yet integrated. No orders are sent.");
 

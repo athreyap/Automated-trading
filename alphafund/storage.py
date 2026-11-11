@@ -344,7 +344,7 @@ class PortfolioStore:
             if existing_batch:
                 return {"batch_id": existing_batch.id, "inserted": 0, "skipped": len(records),
                         "duplicate_file": True}
-            batch = ImportBatch(source_type="csv", filename=filename, checksum=checksum,
+            batch = ImportBatch(source_type=("excel" if filename.lower().endswith((".xlsx", ".xlsm")) else "csv"), filename=filename, checksum=checksum,
                                 row_count=len(records), status="importing")
             session.add(batch)
             session.flush()
@@ -398,7 +398,7 @@ class PortfolioStore:
             existing_batch = session.scalar(select(ImportBatch).where(ImportBatch.checksum == checksum))
             if existing_batch:
                 return {"inserted": 0, "skipped": len(records), "duplicate_file": True}
-            batch = ImportBatch(source_type="csv", filename=filename, checksum=checksum,
+            batch = ImportBatch(source_type=("excel" if filename.lower().endswith((".xlsx", ".xlsm")) else "csv"), filename=filename, checksum=checksum,
                                 row_count=len(records), status="importing")
             session.add(batch)
             session.flush()
@@ -455,7 +455,7 @@ class PortfolioStore:
             existing_batch = session.scalar(select(ImportBatch).where(ImportBatch.checksum == checksum))
             if existing_batch:
                 return {"inserted": 0, "skipped": len(records), "duplicate_file": True}
-            batch = ImportBatch(source_type="csv", filename=filename, checksum=checksum,
+            batch = ImportBatch(source_type=("excel" if filename.lower().endswith((".xlsx", ".xlsm")) else "csv"), filename=filename, checksum=checksum,
                                 row_count=len(records), status="importing")
             session.add(batch)
             session.flush()

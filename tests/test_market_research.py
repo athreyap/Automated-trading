@@ -49,3 +49,18 @@ def test_backtest_has_lagged_strategy_and_benchmark_outputs():
     assert "Buy & hold" in result["equity_curve"]
     assert result["trade_entries"] >= 0
     assert result["fee_bps"] == 10
+
+
+def test_rsi_handles_monotonic_up_down_and_flat_series():
+    index = pd.date_range("2025-01-01", periods=240, freq="B")
+    def frame(close):
+        return pd.DataFrame({
+            "Open": close, "High": close + 1, "Low": close - 1,
+            "Close": close, "Volume": 1000,
+        }, index=index)
+    rising = pd.Series(range(100, 340), index=index, dtype=float)
+    falling = pd.Series(range(340, 100, -1), index=index, dtype=float)
+    flat = pd.Series(100.0, index=index)
+    assert add_research_indicators(frame(rising))["RSI_14"].iloc[-1] == 100
+    assert add_research_indicators(frame(falling))["RSI_14"].iloc[-1] == 0
+    assert add_research_indicators(frame(flat))["RSI_14"].iloc[-1] == 50
