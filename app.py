@@ -763,7 +763,7 @@ elif page == "Research":
     scan_market = st.selectbox("Scanner market", ["NSE", "BSE", "US"], key="scan_market")
     scan_text = st.text_area("Symbols separated by commas or new lines", value="RELIANCE, TCS, INFY" if scan_market == "NSE" else ("500325, 532540" if scan_market == "BSE" else "AAPL, MSFT, NVDA"))
     if st.button("Run watchlist scan", key="run_multi_market_scan"):
-        symbols = [x.strip() for x in re.split(r"[,\\s]+", scan_text) if x.strip()]
+        symbols = [x.strip() for x in re.split(r"[,\s]+", scan_text) if x.strip()]
         if len(symbols) > 30:
             st.error("Please limit each scan to 30 symbols.")
         elif not symbols:
