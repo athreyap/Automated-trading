@@ -820,13 +820,14 @@ elif page == "Risk & Reports":
                 risk_result = calculate_portfolio_risk(price_matrix, parsed_weights, risk_confidence)
                 risk_result["market"] = risk_market
                 risk_result["symbols"] = list(parsed_weights)
+                risk_result["request_signature"] = (risk_market, risk_symbols_text, risk_period, risk_confidence)
                 st.session_state["risk_report_result"] = risk_result
                 st.session_state["risk_report_weights"] = parsed_weights
         except Exception as exc:
             st.error(f"Risk calculation failed: {exc}")
 
     risk_result = st.session_state.get("risk_report_result")
-    if risk_result and risk_result.get("market") == risk_market:
+    if risk_result and risk_result.get("request_signature") == (risk_market, risk_symbols_text, risk_period, risk_confidence):
         st.caption(f'Common daily return window: {risk_result["start_date"]} to {risk_result["end_date"]} · {risk_result["observations"]} observations')
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("Annualised volatility", f'{risk_result["annualised_volatility_pct"]:.2f}%')
@@ -870,7 +871,7 @@ elif page == "Risk & Reports":
     if st.button("Evaluate price thresholds", key="evaluate_price_thresholds"):
         alert_rows = []
         try:
-            rules = [x.strip() for x in alert_rules.split(",") if x.strip()]
+            rules = [x.strip() for x in alert_rules.replace("\n", ",").split(",") if x.strip()]
             if not rules:
                 raise ValueError("Enter at least one threshold rule.")
             if len(rules) > 20:
@@ -976,6 +977,13 @@ elif page == "Research":
                 "Maximum historical drawdown": m["max_drawdown_pct"],
             })
             st.caption("Volatility and drawdown are calculated from the selected historical window. They are not forecasts.")
+        from alphafund.reports import build_research_report
+        technical_report = build_research_report(
+            "AlphaFund Technical Research Report", result["market"], result["ticker"],
+            technical=m)
+        st.download_button("Download technical research report (Markdown)", technical_report,
+                           file_name=f"alphafund_{result['ticker'].lower()}_technical.md",
+                           mime="text/markdown")
     st.divider()
     st.markdown("#### Multi-stock scanner")
     st.caption("Scan a small watchlist (maximum 30 tickers) for comparable technical metrics.")
@@ -993,5 +1001,9 @@ elif page == "Research":
                 st.session_state["market_scan_market"] = scan_market
     if st.session_state.get("market_scan_results") is not None and st.session_state.get("market_scan_market") == scan_market:
         st.dataframe(st.session_state["market_scan_results"], use_container_width=True, hide_index=True)
+        st.download_button("Download scanner results (CSV)",
+                           st.session_state["market_scan_results"].to_csv(index=False),
+                           file_name=f"alphafund_{scan_market.lower()}_watchlist_scan.csv",
+                           mime="text/csv")
     st.warning("Data provider limitations: Yahoo Finance data may be delayed, incomplete or rate-limited. NSE/BSE ticker coverage must be checked symbol by symbol. Fundamental ratios, exchange filings, live quotes and news sentiment are not part of this first integration. No orders are sent.");
 
