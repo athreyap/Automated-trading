@@ -785,6 +785,17 @@ elif page == "Company Intel":
                 st.divider()
         st.caption("Headlines are presented as supplied by the publisher index. AlphaFund does not infer sentiment or treat headlines as verified facts.")
 
+    if fundamentals and st.session_state.get("company_fundamentals_key") == requested_key:
+        from alphafund.reports import build_research_report
+        company_screening = score_company_fundamentals(fundamentals["profile"])
+        company_news = news if st.session_state.get("company_news_key") == requested_key else None
+        company_report = build_research_report(
+            "AlphaFund Company Research Report", intel_market, fundamentals["profile"].get("Ticker", intel_symbol),
+            fundamentals=fundamentals, screening=company_screening, news=company_news)
+        st.download_button("Download company research report (Markdown)", company_report,
+                           file_name=f"alphafund_{intel_symbol.strip().lower()}_research.md",
+                           mime="text/markdown")
+
 elif page == "Risk & Reports":
     from alphafund.risk import (
         parse_weighted_symbols, fetch_price_matrix, calculate_portfolio_risk,
