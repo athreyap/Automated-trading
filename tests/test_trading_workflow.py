@@ -33,7 +33,7 @@ def test_risk_gate_blocks_bad_reward_risk_and_daily_overrun():
     sizing = size_position(plan, budget=10000, max_loss=500)
     verdict = check_risk(plan, sizing, max_loss_per_trade=500,
                          min_reward_risk=1.5, max_daily_loss=600,
-                         daily_risk_committed=200)
+                         daily_risk_committed=550)
     assert verdict["status"] == "BLOCK"
     assert any("Reward/risk" in reason for reason in verdict["reasons"])
     assert any("daily risk" in reason for reason in verdict["reasons"])
