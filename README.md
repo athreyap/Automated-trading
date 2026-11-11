@@ -73,7 +73,7 @@ Install dependencies, then run: pytest -q
 ## Current limitations
 
 - Groww portfolio reads require valid credentials, daily API-key approval (for API key + secret flow), and API permissions. Holdings cost value is quantity × average price, not live market value or unrealised P&L.
-- Paper ledger V1 records BUY entries and blocks SELL entries. It is not a complete portfolio/holdings engine.
+- The separate paper ledger now supports long-only BUY/SELL position accounting, weighted-average cost, realized P&L, fee estimates and oversell protection. It remains a simulation only.
 - Backtest uses a simple long-only moving-average regime, lags positions by one bar to reduce look-ahead bias, and excludes transaction costs, slippage, dividends and taxes.
 - Managed open-weight AI uses Hugging Face Inference Providers through an OpenAI-compatible API. It requires an HF_TOKEN and provider/model availability; usage may be billed by the selected inference provider. Portfolio data sharing is disabled by default and must be explicitly enabled with ALPHAFUND_CLOUD_DATA_SHARING=true.
 - Render free services may sleep and use ephemeral storage. Do not rely on the free deployment for persistent trade records; use a persistent database/disk before any ongoing use.
@@ -254,3 +254,12 @@ Before relying on the cloud dashboard:
 6. Confirm the app password, Groww connection, database persistence, company data and market-data coverage from the running app.
 
 Background alerts, direct CAS PDF parsing, automatic PMS/AIF statement parsing, FX conversion, corporate-action reconciliation, audited-filing ingestion and live trading are not silently claimed as implemented. Live trading remains disabled.
+
+
+## Excel import and paper ledger updates
+
+- Holdings, transactions and valuation import tabs accept CSV and XLSX/XLSM files. The same schema validation, duplicate-file checksum and preview-before-import flow applies to both formats.
+- Excel workbooks are read from the first worksheet using openpyxl. Keep the same column names as the downloadable CSV templates.
+- The paper ledger supports long-only BUY and SELL entries, rejects sells larger than the held quantity, computes weighted-average cost and realized P&L, and includes user-entered fee basis points.
+- Existing SQLite paper-ledger files are upgraded in place with a zero-default fees column when the app starts.
+- Paper ledger state is still a local SQLite file and may not persist on ephemeral Streamlit Cloud storage. It is not linked to Groww and never submits broker orders.
