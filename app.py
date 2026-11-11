@@ -118,7 +118,7 @@ def portfolio_store():
 portfolio = portfolio_store()
 
 # App-wide navigation
-page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "Research", "AI Chat"], horizontal=True,
+page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "Research", "Company Intel", "AI Chat"], horizontal=True,
                 label_visibility="collapsed", key="main_navigation")
 
 if page == "Home":
@@ -689,6 +689,87 @@ elif page == "AI Chat":
         st.session_state["alphafund_chat"] = []
         st.rerun()
     st.caption(f"Context currently loaded: {len(chat_holdings)} saved holdings · {len(st.session_state.get('groww_holdings', []))} Groww holdings · {len(chat_transactions)} transactions · {len(chat_valuations)} valuations. Chat history is held in this Streamlit session.")
+
+elif page == "Company Intel":
+    from alphafund.company_intel import fetch_fundamentals, fetch_company_news
+    from alphafund.market_research import MARKETS
+
+    st.subheader("Company fundamentals & news")
+    st.caption("Company profile, valuation, financial statements and recent headlines for NSE, BSE and US-listed equities.")
+    intel_market = st.selectbox("Market", ["NSE", "BSE", "US"], key="intel_market")
+    intel_default = "RELIANCE" if intel_market == "NSE" else ("500325" if intel_market == "BSE" else "AAPL")
+    intel_symbol = st.text_input("Ticker / scrip code", value=intel_default, key="intel_symbol")
+    currency = MARKETS[intel_market]["currency"]
+    intel_col1, intel_col2 = st.columns(2)
+    with intel_col1:
+        if st.button("Load fundamentals", type="primary", key="load_company_fundamentals"):
+            try:
+                with st.spinner("Retrieving company profile and financial statements…"):
+                    st.session_state["company_fundamentals"] = fetch_fundamentals(intel_symbol, intel_market)
+                    st.session_state["company_fundamentals_key"] = (intel_market, intel_symbol.strip().upper())
+            except Exception as exc:
+                st.error(f"Fundamental data unavailable: {exc}")
+    with intel_col2:
+        if st.button("Load company news", key="load_company_news"):
+            try:
+                with st.spinner("Retrieving recent company headlines…"):
+                    st.session_state["company_news"] = fetch_company_news(intel_symbol, intel_market, limit=10)
+                    st.session_state["company_news_key"] = (intel_market, intel_symbol.strip().upper())
+            except Exception as exc:
+                st.error(f"Company news unavailable: {exc}")
+
+    requested_key = (intel_market, intel_symbol.strip().upper())
+    fundamentals = st.session_state.get("company_fundamentals")
+    if fundamentals and st.session_state.get("company_fundamentals_key") == requested_key:
+        profile = fundamentals["profile"]
+        st.markdown(f"### {profile.get('Company', profile.get('Ticker', intel_symbol))}")
+        st.caption(f"Source: {fundamentals['source']} · Retrieved: {fundamentals['retrieved_at_utc']} · Statement coverage: {fundamentals['statement_coverage']}")
+        st.markdown("#### Valuation and quality metrics")
+        metric_keys = [
+            "Market capitalisation", "Trailing P/E", "Forward P/E", "Price / book",
+            "Price / sales", "PEG ratio", "Return on equity", "Return on assets",
+            "Profit margin", "Operating margin", "Debt / equity", "Current ratio",
+            "Revenue growth", "Earnings growth", "Free cash flow", "Dividend yield",
+        ]
+        available = [(key, profile[key]) for key in metric_keys if profile.get(key) is not None]
+        if available:
+            cols = st.columns(4)
+            for index, (label, value) in enumerate(available):
+                if label in ("Market capitalisation", "Free cash flow"):
+                    display = f"{currency} {float(value):,.0f}"
+                elif label in ("Return on equity", "Return on assets", "Profit margin", "Operating margin", "Revenue growth", "Earnings growth", "Dividend yield"):
+                    display = f"{float(value) * 100:.2f}%"
+                else:
+                    display = f"{float(value):,.2f}"
+                cols[index % 4].metric(label, display)
+        else:
+            st.info("The provider did not return valuation or quality ratios for this security.")
+        if fundamentals["warnings"]:
+            for warning in fundamentals["warnings"]:
+                st.warning(warning)
+        for statement_name, statement_frame in fundamentals["statements"].items():
+            with st.expander(statement_name, expanded=(statement_name == "Income statement")):
+                if statement_frame.empty:
+                    st.info("No statement data returned for this security.")
+                else:
+                    st.dataframe(statement_frame, use_container_width=True, hide_index=True)
+        st.caption("Metrics are provider-reported and may be stale, unavailable or calculated differently across markets. Review source filings before relying on them.")
+
+    news = st.session_state.get("company_news")
+    if st.session_state.get("company_news_key") == requested_key:
+        st.markdown("#### Recent company headlines")
+        if not news:
+            st.info("No recent headlines were returned.")
+        else:
+            for item in news:
+                st.markdown(f"**{item['title']}**")
+                st.caption(f"{item['publisher']} · {item['published']}")
+                if item["summary"]:
+                    st.write(item["summary"])
+                if item["link"]:
+                    st.markdown(f"[Open original article]({item['link']})")
+                st.divider()
+        st.caption("Headlines are presented as supplied by the publisher index. AlphaFund does not infer sentiment or treat headlines as verified facts.")
 
 elif page == "Research":
     from alphafund.market_research import (
