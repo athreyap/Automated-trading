@@ -376,14 +376,14 @@ elif page == "Portfolio":
                     st.error(f"Could not save holding: {exc}")
     
     with csv_tab:
-        st.caption("Upload a CSV using the holdings template. The app validates the full file before importing.")
+        st.caption("Upload a CSV or XLSX workbook using the holdings template. The app validates the full file before importing.")
         st.download_button("Download holdings CSV template",
             data="account_name,account_type,provider,asset_type,instrument_name,identifier,exchange,currency,quantity,average_cost,as_of_date\nMy Broker Account,broker,manual,equity,Example Company,EXAMPLE,NSE,INR,10,125.50,2026-11-03\n",
             file_name="alphafund_holdings_template.csv", mime="text/csv")
-        upload = st.file_uploader("Choose holdings CSV", type=["csv"], key="holdings_csv_upload")
+        upload = st.file_uploader("Choose holdings CSV", type=["csv", "xlsx", "xlsm"], key="holdings_csv_upload")
         if upload is not None:
             try:
-                preview, checksum = validate_holdings_csv(upload.getvalue())
+                preview, checksum = validate_holdings_csv(upload.getvalue(), upload.name)
                 st.success(f"Validated {len(preview)} rows. Review the preview before importing.")
                 st.dataframe(preview, use_container_width=True, hide_index=True)
                 if st.button("Import validated holdings", type="primary"):
@@ -405,10 +405,10 @@ elif page == "Portfolio":
         )
         st.download_button("Download Groww mutual-fund CSV template", data=groww_mf_template,
             file_name="alphafund_groww_mutual_funds_template.csv", mime="text/csv")
-        groww_mf_upload = st.file_uploader("Upload Groww mutual-fund CSV", type=["csv"], key="groww_mf_csv_upload")
+        groww_mf_upload = st.file_uploader("Upload Groww mutual-fund CSV", type=["csv", "xlsx", "xlsm"], key="groww_mf_csv_upload")
         if groww_mf_upload is not None:
             try:
-                groww_mf_preview, groww_mf_checksum = validate_holdings_csv(groww_mf_upload.getvalue())
+                groww_mf_preview, groww_mf_checksum = validate_holdings_csv(groww_mf_upload.getvalue(), groww_mf_upload.name)
                 groww_mf_preview["account_name"] = "Groww Mutual Funds"
                 groww_mf_preview["account_type"] = "mutual_fund"
                 groww_mf_preview["provider"] = "groww"
@@ -526,10 +526,10 @@ elif page == "Portfolio":
             data="account_name,account_type,provider,asset_type,instrument_name,identifier,transaction_type,transaction_date,quantity,price,amount,currency,external_id,notes\nGroww Demat,broker,groww,equity,Reliance,RELIANCE,BUY,2026-10-01,2,1200,2400,INR,TXN-001,Example only\n",
             file_name="alphafund_transactions_template.csv", mime="text/csv")
         from alphafund.imports import validate_transactions_csv
-        tx_upload = st.file_uploader("Upload transactions CSV", type=["csv"], key="transactions_csv_upload")
+        tx_upload = st.file_uploader("Upload transactions CSV or XLSX workbook", type=["csv", "xlsx", "xlsm"], key="transactions_csv_upload")
         if tx_upload is not None:
             try:
-                tx_preview, tx_checksum = validate_transactions_csv(tx_upload.getvalue())
+                tx_preview, tx_checksum = validate_transactions_csv(tx_upload.getvalue(), tx_upload.name)
                 st.success(f"Validated {len(tx_preview)} transactions. Review before importing.")
                 st.dataframe(tx_preview, use_container_width=True, hide_index=True)
                 if st.button("Import transactions", type="primary"):
@@ -552,10 +552,10 @@ elif page == "Portfolio":
             data="account_name,provider,asset_type,instrument_name,identifier,valuation_date,value,observation_type,source,quality,currency\nGroww Demat,groww,equity,Reliance,RELIANCE,2026-11-03,2500,price,Yahoo Finance,indicative,INR\n",
             file_name="alphafund_valuations_template.csv", mime="text/csv")
         from alphafund.imports import validate_valuations_csv
-        val_upload = st.file_uploader("Upload valuations CSV", type=["csv"], key="valuations_csv_upload")
+        val_upload = st.file_uploader("Upload valuations CSV or XLSX workbook", type=["csv", "xlsx", "xlsm"], key="valuations_csv_upload")
         if val_upload is not None:
             try:
-                val_preview, val_checksum = validate_valuations_csv(val_upload.getvalue())
+                val_preview, val_checksum = validate_valuations_csv(val_upload.getvalue(), val_upload.name)
                 st.success(f"Validated {len(val_preview)} valuation observations. Review before importing.")
                 st.dataframe(val_preview, use_container_width=True, hide_index=True)
                 if st.button("Import valuations", type="primary"):
