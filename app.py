@@ -118,7 +118,7 @@ def portfolio_store():
 portfolio = portfolio_store()
 
 # App-wide navigation
-page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "Research", "Company Intel", "Risk & Reports", "AI Chat"], horizontal=True,
+page = st.radio("Main navigation", ["Home", "Portfolio", "Trade Desk", "Discover", "Research", "Company Intel", "Risk & Reports", "AI Chat"], horizontal=True,
                 label_visibility="collapsed", key="main_navigation")
 
 if page == "Home":
@@ -672,6 +672,7 @@ elif page == "AI Chat":
         # do not also pass the live copy or the chatbot would double-count them.
         groww_holdings=[],
     )
+    chat_context["trading_workflow"] = st.session_state.get("trading_workflow_snapshot", {})
     if "alphafund_chat" not in st.session_state:
         st.session_state["alphafund_chat"] = [{
             "role": "assistant",
@@ -699,6 +700,170 @@ elif page == "AI Chat":
         st.session_state["alphafund_chat"] = []
         st.rerun()
     st.caption(f"Context currently loaded: {len(chat_holdings)} saved holdings · {len(st.session_state.get('groww_holdings', []))} Groww holdings · {len(chat_transactions)} transactions · {len(chat_valuations)} valuations. Chat history is held in this Streamlit session.")
+
+elif page == "Trade Desk":
+    from alphafund.market_research import MARKETS, fetch_market_history, analyse_history, scan_symbols
+    from alphafund.company_intel import fetch_company_news, fetch_fundamentals, score_company_fundamentals
+    from alphafund.trading_workflow import (
+        create_trade_plan, size_position, check_risk,
+        historical_trade_replay, build_workflow_snapshot,
+    )
+
+    st.markdown('<div class="af-eyebrow">Specialist research workflow</div>', unsafe_allow_html=True)
+    st.header("AlphaFund Trade Desk")
+    st.caption("Scanner → News & fundamentals → Trade plan → Historical replay → Position sizing → Risk gate → Paper ledger")
+    st.warning("Research and paper workflow only. A PASS is not a recommendation or order approval. No broker orders can be placed.")
+
+    td_market = st.selectbox("Market", ["NSE", "BSE", "US"], key="td_market")
+    td_currency = MARKETS[td_market]["currency"]
+    td_default = "RELIANCE, TCS, INFY, SBIN" if td_market == "NSE" else ("500325, 532540" if td_market == "BSE" else "AAPL, MSFT, NVDA, TSLA")
+    td_watchlist = st.text_area("Scanner watchlist (comma-separated, max 30)", value=td_default, key="td_watchlist")
+    if st.button("Run market scanner", type="primary", key="td_scan"):
+        try:
+            symbols = [x.strip().upper() for x in td_watchlist.replace("\n", ",").split(",") if x.strip()]
+            if not symbols or len(symbols) > 30:
+                raise ValueError("Enter between 1 and 30 ticker symbols.")
+            with st.spinner("Scanning completed daily bars…"):
+                scan_frame = scan_symbols(symbols, td_market, period="1y")
+            st.session_state["td_scan_result"] = scan_frame
+            st.session_state["td_scan_key"] = (td_market, td_watchlist)
+        except Exception as exc:
+            st.error(f"Scanner failed: {exc}")
+    if st.session_state.get("td_scan_key") == (td_market, td_watchlist):
+        st.markdown("#### Scanner results")
+        st.dataframe(st.session_state["td_scan_result"], use_container_width=True, hide_index=True)
+        st.caption("Scanner uses available daily historical bars. It is not a real-time tick scanner; failed or stale symbols remain visibly unavailable.")
+
+    st.divider()
+    st.markdown("#### Company news and fundamentals")
+    intel_symbol = st.text_input("Research ticker", value=td_default.split(",")[0].strip(), key="td_intel_symbol")
+    ncol, fcol = st.columns(2)
+    with ncol:
+        if st.button("Fetch recent news", key="td_news"):
+            try:
+                with st.spinner("Loading timestamped company headlines…"):
+                    st.session_state["td_news"] = fetch_company_news(intel_symbol, td_market, limit=10)
+                    st.session_state["td_news_key"] = (td_market, intel_symbol.strip().upper())
+            except Exception as exc:
+                st.error(f"News unavailable: {exc}")
+    with fcol:
+        if st.button("Fetch fundamentals", key="td_fundamentals"):
+            try:
+                with st.spinner("Loading company profile and statements…"):
+                    st.session_state["td_fundamentals"] = fetch_fundamentals(intel_symbol, td_market)
+                    st.session_state["td_fundamentals_key"] = (td_market, intel_symbol.strip().upper())
+            except Exception as exc:
+                st.error(f"Fundamentals unavailable: {exc}")
+    if st.session_state.get("td_news_key") == (td_market, intel_symbol.strip().upper()):
+        news_items = st.session_state.get("td_news") or []
+        if news_items:
+            for item in news_items:
+                st.markdown(f"**{item.get('title', 'Untitled headline')}**")
+                st.caption(f"{item.get('publisher', 'Source unavailable')} · {item.get('published', 'Publication time unavailable')}")
+                if item.get("summary"):
+                    st.write(item["summary"])
+                if item.get("link"):
+                    st.markdown(f"[Open source article]({item['link']})")
+        else:
+            st.info("No news items were returned for this symbol.")
+    if st.session_state.get("td_fundamentals_key") == (td_market, intel_symbol.strip().upper()):
+        td_fund = st.session_state.get("td_fundamentals") or {}
+        profile = td_fund.get("profile", {})
+        score = score_company_fundamentals(profile) if profile else {}
+        st.write({"Company": profile.get("Company", intel_symbol), "Fundamental score": score.get("composite_score"),
+                  "Score coverage": score.get("coverage"), "Source": td_fund.get("source"),
+                  "Retrieved": td_fund.get("retrieved_at_utc")})
+        for warning in td_fund.get("warnings", []):
+            st.warning(warning)
+
+    st.divider()
+    st.markdown("#### Build a trade plan")
+    st.caption("Use a completed-bar or broker-verified reference price. The tool does not infer an entry price or silently move your stop.")
+    with st.form("td_plan_form"):
+        p1, p2, p3 = st.columns(3)
+        td_symbol = p1.text_input("Ticker", value=intel_symbol.strip().upper(), key="td_plan_symbol")
+        td_side = p2.selectbox("Direction", ["LONG", "SHORT"], help="SHORT is research-only; no short order can be sent.")
+        td_setup = p3.selectbox("Setup", ["Opening-range breakout", "Trend continuation", "Pullback", "Oversold rebound", "Manual"])
+        p4, p5, p6 = st.columns(3)
+        td_entry = p4.number_input(f"Entry price ({td_currency})", min_value=0.01, value=100.0, step=0.05)
+        td_stop = p5.number_input(f"Stop price ({td_currency})", min_value=0.01, value=98.0, step=0.05)
+        td_target = p6.number_input(f"Target price ({td_currency})", min_value=0.01, value=104.0, step=0.05)
+        p7, p8, p9 = st.columns(3)
+        td_budget = p7.number_input(f"Trading budget ({td_currency})", min_value=1.0, value=100000.0, step=1000.0)
+        td_max_loss = p8.number_input(f"Maximum loss / trade ({td_currency})", min_value=1.0, value=1000.0, step=100.0)
+        td_max_position = p9.slider("Maximum position (% of budget)", 1, 100, 25)
+        p10, p11, p12 = st.columns(3)
+        td_cash_buffer = p10.slider("Cash buffer (%)", 0, 90, 10)
+        td_min_rr = p11.number_input("Minimum reward / risk", min_value=0.1, max_value=20.0, value=1.5, step=0.1)
+        td_max_daily_loss = p12.number_input(f"Maximum daily risk ({td_currency})", min_value=0.0, value=2000.0, step=100.0)
+        p13, p14 = st.columns(2)
+        td_daily_committed = p13.number_input(f"Risk already committed today ({td_currency})", min_value=0.0, value=0.0, step=100.0)
+        td_trades_today = p14.number_input("Trades already taken today", min_value=0, max_value=100, value=0, step=1)
+        td_replay_period = st.selectbox("Replay history", ["1y", "2y", "5y"], index=1)
+        td_max_bars = st.slider("Replay horizon (daily bars)", 1, 60, 10)
+        plan_submit = st.form_submit_button("Evaluate plan, size and risk", type="primary")
+    if plan_submit:
+        try:
+            plan = create_trade_plan(
+                td_symbol, td_market, td_side, td_entry, td_stop, td_target,
+                setup=td_setup, timeframe="1d",
+                as_of=pd.Timestamp.now(tz="UTC").isoformat(),
+            )
+            sizing = size_position(
+                plan, budget=td_budget, max_loss=td_max_loss,
+                max_position_pct=td_max_position, cash_buffer_pct=td_cash_buffer,
+            )
+            risk_gate = check_risk(
+                plan, sizing, max_loss_per_trade=td_max_loss,
+                min_reward_risk=td_min_rr, max_daily_loss=td_max_daily_loss,
+                daily_risk_committed=td_daily_committed, trades_today=int(td_trades_today),
+            )
+            _, replay_history = fetch_market_history(td_symbol, td_market, period=td_replay_period)
+            replay = historical_trade_replay(plan, replay_history, max_bars=int(td_max_bars))
+            snapshot = build_workflow_snapshot(
+                scanner_rows=st.session_state.get("td_scan_result", pd.DataFrame()).to_dict("records")
+                    if isinstance(st.session_state.get("td_scan_result"), pd.DataFrame) else [],
+                news_items=st.session_state.get("td_news", []),
+                plan=plan, sizing=sizing, risk=risk_gate, replay=replay,
+            )
+            st.session_state["trading_workflow_snapshot"] = snapshot
+            st.session_state["td_plan_key"] = (td_market, td_symbol.strip().upper())
+            st.success("Research plan evaluated and saved to this session for AlphaFund AI.")
+        except Exception as exc:
+            st.error(f"Plan evaluation failed: {exc}")
+
+    snapshot = st.session_state.get("trading_workflow_snapshot")
+    if snapshot and snapshot.get("trade_plan"):
+        plan_data = snapshot["trade_plan"]
+        st.markdown("#### Workflow verdict")
+        st.write({"Symbol": plan_data["symbol"], "Market": plan_data["market"],
+                  "Direction": plan_data["side"], "Setup": plan_data["setup"],
+                  "Entry": plan_data["entry"], "Stop": plan_data["stop"],
+                  "Target": plan_data["target"], "Reward / risk": round(plan_data["reward_risk"], 2)})
+        sizing = snapshot.get("sizing") or {}
+        risk_gate = snapshot.get("risk_gate") or {}
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Proposed units", str(sizing.get("units", 0)))
+        r2.metric("Proposed notional", f'{td_currency} {sizing.get("notional", 0):,.2f}')
+        r3.metric("Loss at stop", f'{td_currency} {sizing.get("max_loss_at_stop", 0):,.2f}')
+        r4.metric("Risk gate", risk_gate.get("status", "NOT RUN"))
+        for reason in risk_gate.get("reasons", []):
+            st.error(reason)
+        for warning in risk_gate.get("warnings", []):
+            st.warning(warning)
+        replay = snapshot.get("historical_replay") or {}
+        st.markdown("#### Historical Time Machine")
+        st.write({"Replay observations": replay.get("observations"),
+                  "Target first (%)": replay.get("target_first_pct"),
+                  "Stop first (%)": replay.get("stop_first_pct"),
+                  "Open at horizon (%)": replay.get("open_at_horizon_pct"),
+                  "Average R": replay.get("average_r")})
+        st.caption(replay.get("warning", "Replay not available."))
+        st.caption("Historical replay is a close-only approximation. It is not a prediction and does not include intraday price paths, market impact, fees or slippage.")
+        st.info("Paper-only workflow: this plan is not sent to Groww or any broker. Record a simulated fill separately in the existing Paper Portfolio section after independently reviewing the plan.")
+
+    st.caption("Current coverage: daily-bar scanning, manual entry/stop/target plans, deterministic sizing, risk checks, company news/fundamentals and historical close-only replay. Intraday bar-by-bar entry timing, background alerts and multi-user accounts are not yet implemented.")
+
 
 elif page == "Company Intel":
     from alphafund.company_intel import fetch_fundamentals, fetch_company_news, score_company_fundamentals
