@@ -303,7 +303,7 @@ elif page == "Discover":
     p1, p2 = st.columns(2)
     p1.metric("Paper cash available", f"₹{paper_cash(settings.trading_allocation):,.2f}")
     open_paper_positions = paper_positions()
-    p2.metric("Open paper positions", str(len(open_paper_positions)))
+    p2.metric("Open paper positions", str(sum(1 for row in open_paper_positions if row["quantity"] > 0)))
     if open_paper_positions:
         st.markdown("**Paper positions · weighted-average cost**")
         st.dataframe(pd.DataFrame(open_paper_positions), use_container_width=True, hide_index=True)
