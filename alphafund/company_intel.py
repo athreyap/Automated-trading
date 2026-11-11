@@ -179,3 +179,73 @@ def fetch_company_news(symbol: str, market: str, limit: int = 10) -> list[dict]:
         return []
     items = [_news_content(item) for item in raw if isinstance(item, dict)]
     return [item for item in items if item["title"]][:limit]
+
+
+
+def score_company_fundamentals(profile: dict) -> dict:
+    """Transparent screening score from reported ratios; never a fair-value model.
+
+    Each pillar is scored only from available inputs. The composite is the
+    mean of available pillar scores, so missing data is not treated as zero.
+    """
+    pillars: dict[str, dict] = {}
+
+    def add(pillar: str, rules: list[tuple[str, callable]]) -> None:
+        values = []
+        used = []
+        for label, rule in rules:
+            raw = profile.get(label)
+            if raw is None:
+                continue
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if not pd.notna(value):
+                continue
+            values.append(100.0 if rule(value) else 0.0)
+            used.append(label)
+        if values:
+            pillars[pillar] = {
+                "score": round(sum(values) / len(values), 1),
+                "coverage": len(values),
+                "inputs": used,
+            }
+
+    add("Profitability", [
+        ("Return on equity", lambda x: x > 0.12),
+        ("Profit margin", lambda x: x > 0.08),
+        ("Operating margin", lambda x: x > 0.10),
+    ])
+    add("Balance-sheet strength", [
+        ("Debt / equity", lambda x: x < 100),
+        ("Current ratio", lambda x: x >= 1.2),
+        ("Quick ratio", lambda x: x >= 1.0),
+    ])
+    add("Growth", [
+        ("Revenue growth", lambda x: x > 0.05),
+        ("Earnings growth", lambda x: x > 0.05),
+    ])
+    add("Valuation discipline", [
+        ("Trailing P/E", lambda x: 0 < x < 30),
+        ("Forward P/E", lambda x: 0 < x < 25),
+        ("Price / book", lambda x: 0 < x < 5),
+        ("PEG ratio", lambda x: 0 < x < 2),
+    ])
+    composite = round(sum(item["score"] for item in pillars.values()) / len(pillars), 1) if pillars else None
+    flags = []
+    if profile.get("Debt / equity") is not None and float(profile["Debt / equity"]) >= 200:
+        flags.append("Reported debt/equity is high under this screening threshold.")
+    if profile.get("Current ratio") is not None and float(profile["Current ratio"]) < 1:
+        flags.append("Reported current ratio is below 1.")
+    if profile.get("Profit margin") is not None and float(profile["Profit margin"]) < 0:
+        flags.append("Reported profit margin is negative.")
+    if profile.get("Trailing P/E") is not None and float(profile["Trailing P/E"]) <= 0:
+        flags.append("Trailing P/E is non-positive; earnings may be negative or the ratio may be unavailable.")
+    return {
+        "composite_score": composite,
+        "pillars": pillars,
+        "coverage": f"{len(pillars)}/4 pillars",
+        "flags": flags,
+        "methodology": "Equal-weight pass/fail screens within each available pillar; equal-weight mean across available pillars. Thresholds are heuristic and not sector-adjusted.",
+    }

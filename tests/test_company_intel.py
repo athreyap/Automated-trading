@@ -29,3 +29,19 @@ def test_news_parser_supports_nested_yfinance_payload():
     assert result["title"] == "Company reports results"
     assert result["publisher"] == "Example News"
     assert result["link"] == "https://example.com/story"
+
+from alphafund.company_intel import score_company_fundamentals
+
+
+def test_fundamental_score_reports_coverage_and_flags():
+    result = score_company_fundamentals({
+        "Return on equity": 0.18,
+        "Profit margin": 0.12,
+        "Debt / equity": 250,
+        "Current ratio": 0.8,
+        "Revenue growth": 0.1,
+        "Trailing P/E": 22,
+    })
+    assert result["composite_score"] is not None
+    assert result["coverage"] == "4/4 pillars"
+    assert result["flags"]

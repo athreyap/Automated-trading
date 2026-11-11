@@ -73,7 +73,11 @@ def add_research_indicators(data: pd.DataFrame) -> pd.DataFrame:
     gain = delta.clip(lower=0).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
     loss = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
     rs = gain / loss.replace(0, float("nan"))
-    out["RSI_14"] = (100 - 100 / (1 + rs)).fillna(50)
+    rsi = 100 - 100 / (1 + rs)
+    rsi = rsi.mask((loss == 0) & (gain > 0), 100.0)
+    rsi = rsi.mask((gain == 0) & (loss > 0), 0.0)
+    rsi = rsi.mask((gain == 0) & (loss == 0), 50.0)
+    out["RSI_14"] = rsi.fillna(50.0)
     previous_close = close.shift(1)
     true_range = pd.concat(
         [high - low, (high - previous_close).abs(), (low - previous_close).abs()],

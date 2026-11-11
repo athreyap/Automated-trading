@@ -118,7 +118,7 @@ def portfolio_store():
 portfolio = portfolio_store()
 
 # App-wide navigation
-page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "Research", "Company Intel", "AI Chat"], horizontal=True,
+page = st.radio("Main navigation", ["Home", "Portfolio", "Discover", "Research", "Company Intel", "Risk & Reports", "AI Chat"], horizontal=True,
                 label_visibility="collapsed", key="main_navigation")
 
 if page == "Home":
@@ -691,7 +691,7 @@ elif page == "AI Chat":
     st.caption(f"Context currently loaded: {len(chat_holdings)} saved holdings · {len(st.session_state.get('groww_holdings', []))} Groww holdings · {len(chat_transactions)} transactions · {len(chat_valuations)} valuations. Chat history is held in this Streamlit session.")
 
 elif page == "Company Intel":
-    from alphafund.company_intel import fetch_fundamentals, fetch_company_news
+    from alphafund.company_intel import fetch_fundamentals, fetch_company_news, score_company_fundamentals
     from alphafund.market_research import MARKETS
 
     st.subheader("Company fundamentals & news")
@@ -747,6 +747,20 @@ elif page == "Company Intel":
         if fundamentals["warnings"]:
             for warning in fundamentals["warnings"]:
                 st.warning(warning)
+        screening = score_company_fundamentals(profile)
+        st.markdown("#### Fundamental screening score")
+        if screening["composite_score"] is not None:
+            st.metric("Heuristic screening score", f'{screening["composite_score"]:.1f}/100')
+            st.caption(f'Method: {screening["methodology"]} · Coverage: {screening["coverage"]}')
+            score_frame = pd.DataFrame([
+                {"Pillar": pillar, "Score / 100": item["score"], "Inputs": ", ".join(item["inputs"])}
+                for pillar, item in screening["pillars"].items()
+            ])
+            st.dataframe(score_frame, use_container_width=True, hide_index=True)
+        else:
+            st.info("Not enough reported ratios to calculate a screening score.")
+        for flag in screening["flags"]:
+            st.warning(flag)
         for statement_name, statement_frame in fundamentals["statements"].items():
             with st.expander(statement_name, expanded=(statement_name == "Income statement")):
                 if statement_frame.empty:
@@ -770,6 +784,131 @@ elif page == "Company Intel":
                     st.markdown(f"[Open original article]({item['link']})")
                 st.divider()
         st.caption("Headlines are presented as supplied by the publisher index. AlphaFund does not infer sentiment or treat headlines as verified facts.")
+
+    if fundamentals and st.session_state.get("company_fundamentals_key") == requested_key:
+        from alphafund.reports import build_research_report
+        company_screening = score_company_fundamentals(fundamentals["profile"])
+        company_news = news if st.session_state.get("company_news_key") == requested_key else None
+        company_report = build_research_report(
+            "AlphaFund Company Research Report", intel_market, fundamentals["profile"].get("Ticker", intel_symbol),
+            fundamentals=fundamentals, screening=company_screening, news=company_news)
+        st.download_button("Download company research report (Markdown)", company_report,
+                           file_name=f"alphafund_{intel_symbol.strip().lower()}_research.md",
+                           mime="text/markdown")
+
+elif page == "Risk & Reports":
+    from alphafund.risk import (
+        parse_weighted_symbols, fetch_price_matrix, calculate_portfolio_risk,
+        evaluate_price_alert,
+    )
+    from alphafund.reports import build_research_report
+    from alphafund.market_research import fetch_market_history
+
+    st.subheader("Portfolio risk, price thresholds & reports")
+    st.caption("Historical risk analytics from adjusted daily closes. Use explicit weights; this page does not infer portfolio weights from incomplete or mixed-asset records.")
+    risk_market = st.selectbox("Risk market", ["NSE", "BSE", "US"], key="risk_market")
+    risk_default = "RELIANCE:50, TCS:30, INFY:20" if risk_market == "NSE" else ("500325:60, 532540:40" if risk_market == "BSE" else "AAPL:50, MSFT:30, NVDA:20")
+    risk_symbols_text = st.text_area("Ticker weights (SYMBOL:WEIGHT)", value=risk_default, key="risk_symbols_text",
+                                     help="Weights are normalized automatically; they do not need to add up to 100.")
+    risk_period = st.selectbox("Risk lookback", ["1y", "2y", "5y"], index=1, key="risk_period")
+    risk_confidence = st.slider("Historical VaR confidence", 0.90, 0.99, 0.95, 0.01, key="risk_confidence")
+    if st.button("Calculate portfolio risk", type="primary", key="calculate_portfolio_risk"):
+        try:
+            with st.spinner("Fetching daily adjusted closes and calculating risk…"):
+                parsed_weights = parse_weighted_symbols(risk_symbols_text)
+                price_matrix = fetch_price_matrix(parsed_weights, risk_market, risk_period)
+                risk_result = calculate_portfolio_risk(price_matrix, parsed_weights, risk_confidence)
+                risk_result["market"] = risk_market
+                risk_result["symbols"] = list(parsed_weights)
+                risk_result["request_signature"] = (risk_market, risk_symbols_text, risk_period, risk_confidence)
+                st.session_state["risk_report_result"] = risk_result
+                st.session_state["risk_report_weights"] = parsed_weights
+        except Exception as exc:
+            st.error(f"Risk calculation failed: {exc}")
+
+    risk_result = st.session_state.get("risk_report_result")
+    if risk_result and risk_result.get("request_signature") == (risk_market, risk_symbols_text, risk_period, risk_confidence):
+        st.caption(f'Common daily return window: {risk_result["start_date"]} to {risk_result["end_date"]} · {risk_result["observations"]} observations')
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Annualised volatility", f'{risk_result["annualised_volatility_pct"]:.2f}%')
+        r2.metric(f'Historical VaR ({risk_result["confidence"]:.0%})', f'{risk_result["historical_var_pct"]:.2f}%')
+        r3.metric("Historical CVaR", f'{risk_result["historical_cvar_pct"]:.2f}%')
+        r4.metric("Maximum drawdown", f'{risk_result["max_drawdown_pct"]:.2f}%')
+        st.markdown("#### Portfolio weights and risk contribution")
+        contribution_rows = []
+        for symbol, weight in risk_result["weights_pct"].items():
+            contribution_rows.append({
+                "Symbol": symbol,
+                "Weight (%)": round(weight, 2),
+                "Annualised volatility (%)": round(risk_result["asset_volatility_pct"].get(symbol, 0), 2),
+                "Risk contribution (%)": round(risk_result["risk_contribution_pct"].get(symbol, 0), 2),
+            })
+        st.dataframe(pd.DataFrame(contribution_rows), use_container_width=True, hide_index=True)
+        st.markdown("#### Historical portfolio growth")
+        st.line_chart(risk_result["equity_curve"], use_container_width=True)
+        st.markdown("#### Return correlation")
+        st.dataframe(risk_result["correlation"].round(3), use_container_width=True)
+        if risk_result.get("price_failures"):
+            st.warning("Some symbols were excluded because price history was unavailable: " + "; ".join(
+                f'{key}: {value}' for key, value in risk_result["price_failures"].items()))
+        report_text = build_research_report(
+            "AlphaFund Portfolio Risk Report", risk_market,
+            ", ".join(risk_result["symbols"]), risk=risk_result)
+        st.download_button("Download risk report (Markdown)", report_text,
+                           file_name="alphafund_portfolio_risk_report.md", mime="text/markdown")
+        st.download_button("Download risk contributions (CSV)",
+                           pd.DataFrame(contribution_rows).to_csv(index=False),
+                           file_name="alphafund_risk_contributions.csv", mime="text/csv")
+        st.caption("VaR/CVaR are historical sample estimates, not maximum-loss limits. The weighted-return calculation assumes periodic rebalancing to the entered weights and uses only common complete observations. No taxes, fees, slippage, FX conversion or dividend adjustments are added.")
+
+    st.divider()
+    st.markdown("#### Price threshold checks")
+    st.caption("Manual checks only: AlphaFund fetches recent daily closes when you press Evaluate. It does not run a background scheduler or send push notifications.")
+    alert_market = st.selectbox("Alert market", ["NSE", "BSE", "US"], key="alert_market")
+    alert_rules = st.text_area("Threshold rules (SYMBOL:above|below:PRICE)",
+                               value="RELIANCE:above:1500, TCS:below:3000" if alert_market == "NSE" else ("500325:above:1000" if alert_market == "BSE" else "AAPL:above:250"),
+                               key="alert_rules")
+    if st.button("Evaluate price thresholds", key="evaluate_price_thresholds"):
+        alert_rows = []
+        try:
+            rules = [x.strip() for x in alert_rules.replace("\n", ",").split(",") if x.strip()]
+            if not rules:
+                raise ValueError("Enter at least one threshold rule.")
+            if len(rules) > 20:
+                raise ValueError("Limit each check to 20 rules.")
+            for rule in rules:
+                parts = [x.strip() for x in rule.split(":")]
+                if len(parts) != 3:
+                    raise ValueError(f"Invalid rule '{rule}'. Use SYMBOL:above|below:PRICE.")
+                symbol, direction, target_text = parts
+                target = float(target_text)
+                _, history = fetch_market_history(symbol, alert_market, period="6mo")
+                closes = history["Close"].dropna()
+                if len(closes) < 2:
+                    raise ValueError(f"Not enough recent closes for {symbol}.")
+                evaluated = evaluate_price_alert(float(closes.iloc[-1]), float(closes.iloc[-2]), target, direction)
+                alert_rows.append({
+                    "Symbol": symbol.upper(), "Direction": direction.lower(),
+                    "Target": target, "Last close": evaluated["last_price"],
+                    "Previous close": evaluated["previous_price"],
+                    "Crossed this session": evaluated["triggered"],
+                    "Threshold currently met": evaluated["currently_met"],
+                    "Data date": str(closes.index[-1].date()),
+                })
+            st.session_state["price_threshold_results"] = alert_rows
+            st.session_state["price_threshold_market"] = alert_market
+        except Exception as exc:
+            st.error(f"Threshold evaluation failed: {exc}")
+    if st.session_state.get("price_threshold_market") == alert_market:
+        alert_frame = pd.DataFrame(st.session_state.get("price_threshold_results", []))
+        if not alert_frame.empty:
+            st.dataframe(alert_frame, use_container_width=True, hide_index=True)
+            crossed = alert_frame[alert_frame["Crossed this session"]]
+            if not crossed.empty:
+                st.success(f'{len(crossed)} threshold crossing(s) detected in the latest available daily bar.')
+            else:
+                st.info("No new threshold crossings detected in the latest available daily bar.")
+    st.warning("This feature is a manual daily-bar check, not continuous monitoring. For automatic notifications, AlphaFund needs an always-on scheduler and a configured notification channel. Yahoo Finance data can be delayed or unavailable.")
 
 elif page == "Research":
     from alphafund.market_research import (
@@ -838,6 +977,13 @@ elif page == "Research":
                 "Maximum historical drawdown": m["max_drawdown_pct"],
             })
             st.caption("Volatility and drawdown are calculated from the selected historical window. They are not forecasts.")
+        from alphafund.reports import build_research_report
+        technical_report = build_research_report(
+            "AlphaFund Technical Research Report", result["market"], result["ticker"],
+            technical=m)
+        st.download_button("Download technical research report (Markdown)", technical_report,
+                           file_name=f"alphafund_{result['ticker'].lower()}_technical.md",
+                           mime="text/markdown")
     st.divider()
     st.markdown("#### Multi-stock scanner")
     st.caption("Scan a small watchlist (maximum 30 tickers) for comparable technical metrics.")
@@ -855,5 +1001,9 @@ elif page == "Research":
                 st.session_state["market_scan_market"] = scan_market
     if st.session_state.get("market_scan_results") is not None and st.session_state.get("market_scan_market") == scan_market:
         st.dataframe(st.session_state["market_scan_results"], use_container_width=True, hide_index=True)
+        st.download_button("Download scanner results (CSV)",
+                           st.session_state["market_scan_results"].to_csv(index=False),
+                           file_name=f"alphafund_{scan_market.lower()}_watchlist_scan.csv",
+                           mime="text/csv")
     st.warning("Data provider limitations: Yahoo Finance data may be delayed, incomplete or rate-limited. NSE/BSE ticker coverage must be checked symbol by symbol. Fundamental ratios, exchange filings, live quotes and news sentiment are not part of this first integration. No orders are sent.");
 
