@@ -220,3 +220,37 @@ For private local inference, install Ollama from https://ollama.com/, run `ollam
 - Missing prices/NAVs, partial coverage and stale observations remain explicit; the model must not invent market values, returns or risk statistics.
 - No cloud fallback occurs silently. Live broker orders remain disabled.
 - The Streamlit application and Neon database are independent of the inference provider. This keeps phone access available while the laptop is offline.
+
+
+## Risk analytics, price checks and research exports
+
+The Risk & Reports page adds:
+- Weighted historical portfolio analytics for up to 20 user-entered NSE, BSE or US tickers.
+- Annualised volatility, historical VaR/CVaR, maximum drawdown, asset volatility, marginal risk contribution and return correlation.
+- Price threshold checks against the latest available daily bar, with separate flags for a new crossing and a threshold that is already met.
+- Markdown research exports for technical, company/fundamental and portfolio-risk reports; watchlist scans and risk contributions can be downloaded as CSV.
+- A transparent fundamental screening score with profitability, balance-sheet, growth and valuation pillars. It reports coverage and warnings; it is not an intrinsic-value estimate or a price target.
+
+Risk methodology and limits:
+- Weights are normalised from the user's inputs. Daily portfolio returns assume periodic rebalancing to those weights and use common complete daily observations.
+- Historical VaR/CVaR are sample estimates, not guaranteed loss limits. Volatility and drawdown are backward-looking.
+- Price threshold checks are manual and run only when the user presses the evaluation button. Streamlit Community Cloud does not provide a dependable always-on scheduler or push-notification service for this feature.
+- Yahoo Finance via yfinance remains an indicative source and can be delayed, incomplete, stale or rate-limited.
+- The fundamental score uses equal-weight heuristic pass/fail thresholds and is not sector-adjusted. It must not be used alone to rank or buy securities.
+- Research reports retain sources and caveats. No live broker orders are sent.
+
+## RSI edge-case correction
+
+The technical RSI calculation now handles monotonic price series explicitly: no-loss windows with gains return 100, no-gain windows with losses return 0, and a flat window returns 50. This avoids treating a persistent uptrend as neutral merely because the average loss is zero.
+
+## Operational completion checklist
+
+Before relying on the cloud dashboard:
+1. Configure APP_PASSWORD in Streamlit Community Cloud secrets.
+2. Configure a persistent PostgreSQL DATABASE_URL (Neon or another managed PostgreSQL service); the local SQLite fallback is not durable across ephemeral cloud restarts.
+3. Configure Groww API credentials only if you want read-only holdings sync. Groww API key approval may be required daily.
+4. Configure the selected AI provider and decide explicitly whether cloud portfolio-data sharing is enabled. The default privacy gate is disabled.
+5. Confirm Streamlit Community Cloud points to repository athreyap/Automated-trading, branch main, app.py, then verify the deployed app after GitHub CI passes.
+6. Confirm the app password, Groww connection, database persistence, company data and market-data coverage from the running app.
+
+Background alerts, direct CAS PDF parsing, automatic PMS/AIF statement parsing, FX conversion, corporate-action reconciliation, audited-filing ingestion and live trading are not silently claimed as implemented. Live trading remains disabled.
