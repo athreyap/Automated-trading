@@ -1015,5 +1015,5 @@ elif page == "Research":
                            st.session_state["market_scan_results"].to_csv(index=False),
                            file_name=f"alphafund_{scan_market.lower()}_watchlist_scan.csv",
                            mime="text/csv")
-    st.warning("Data provider limitations: Yahoo Finance data may be delayed, incomplete or rate-limited. NSE/BSE ticker coverage must be checked symbol by symbol. Fundamental ratios, exchange filings, live quotes and news sentiment are not part of this first integration. No orders are sent.");
+    st.warning("Data provider limitations: Yahoo Finance data may be delayed, incomplete or rate-limited. NSE/BSE ticker coverage must be checked symbol by symbol. Official exchange filings, consolidated live quotes and validated news sentiment are not yet integrated. No orders are sent.");
 
